@@ -1,0 +1,35 @@
+{
+  "updatedAt": "2026-09-29T14:18:25.250Z",
+  "characters": [
+    {
+      "id": "echo-mara-voss",
+      "name": "Echo",
+      "author": "Bullpen Demo Vault",
+      "rank": 2,
+      "tagline": "Psychic detective who finds the people no one else can.",
+      "powers": [
+        "Telepathic Link",
+        "Mind Reading",
+        "ESP",
+        "Precognition 1",
+        "Danger Sense"
+      ],
+      "submittedAt": "2026-09-29T14:18:25.250Z",
+      "file": "chars/echo-mara-voss.json"
+    },
+    {
+      "id": "nightshade-theo-marsh",
+      "name": "Nightshade",
+      "author": "Bullpen Demo Vault",
+      "rank": 2,
+      "tagline": "Light-bending infiltrator with a soft step and a dry wit.",
+      "powers": [
+        "Invisibility",
+        "ESP",
+        "Telepathic Link"
+      ],
+      "submittedAt": "2026-09-29T14:18:25.250Z",
+      "file": "chars/nightshade-theo-marsh.json"
+    }
+  ]
+}
