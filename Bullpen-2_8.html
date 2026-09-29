@@ -5544,6 +5544,10 @@ Characters shared by the Bullpen community. Browse them, view their sheets, add 
 <button type="button" onclick="if(typeof cvRefresh==='function')cvRefresh(true);" style="width:auto;padding:8px 14px;font-size:0.8em;background:#0a2a44;border:1px solid #446688;color:#88ccff;border-radius:8px;cursor:pointer;">&#x1F504; Refresh</button>
 <button type="button" onclick="if(typeof cvSubmitHero==='function')cvSubmitHero();" style="width:auto;padding:8px 14px;font-size:0.8em;background:#3a1a00;border:1px solid #aa4400;color:#ffcc88;border-radius:8px;cursor:pointer;">&#x1F4E4; Submit your hero</button>
 </div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">
+<label for="cvAuthor" style="white-space:nowrap;">Posting as:</label>
+<input id="cvAuthor" oninput="if(typeof cvSaveAuthor==='function')cvSaveAuthor(this.value);" placeholder="your handle (saved on this device)" maxlength="80" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">
+</div>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
 <input id="cvSearch" oninput="if(typeof cvRender==='function')cvRender();" placeholder="&#x1F50D; Search name, author, or power..." style="flex:2;min-width:160px;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.85em;">
 <select id="cvRankFilter" onchange="if(typeof cvRender==='function')cvRender();" style="flex:1;min-width:110px;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.85em;">
@@ -7999,9 +8003,26 @@ function cvSetStatus(html) {
     var el = document.getElementById('cvStatus');
     if (el) el.innerHTML = html;
 }
+// Handle attached to every submission: saved on this device, prefilled into
+// the issue template so uploads always carry a username.
+var CV_AUTHOR_KEY = 'bullpen_cv_author_v1';
+function cvGetAuthor() {
+    try { return (localStorage.getItem(CV_AUTHOR_KEY) || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 80); }
+    catch (e) { return ''; }
+}
+function cvSaveAuthor(v) {
+    try { localStorage.setItem(CV_AUTHOR_KEY, String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, 80)); } catch (e) {}
+}
+function cvPrefillAuthor() {
+    try {
+        var el = document.getElementById('cvAuthor');
+        if (el && !el.value) el.value = cvGetAuthor();
+    } catch (e) {}
+}
 function cvFirstOpen() {
     if (_cvLoaded) return;
     _cvLoaded = true;
+    cvPrefillAuthor();
     cvRefresh(false);
 }
 async function cvRefresh(force) {
@@ -8211,8 +8232,9 @@ function cvSubmitHero() {
     var made = csMakeCode(hero);
     if (!made.ok) { if (typeof showAlert === 'function') showAlert('Couldn\u2019t build a share code for the current hero.', 'Submit failed', '\u26D4'); return; }
     var name = hero.heroName || hero.realName || 'Untitled Hero';
+    var author = (typeof cvGetAuthor === 'function') ? cvGetAuthor() : '';
     var codeBlock = '```bullpen\n' + made.code + '\n```\n';
-    var body = '## Author credit\n<your handle, or "anonymous">\n\n## Tagline\n<one line describing ' + name + '>\n\n## Description\n<background, personality, build notes \u2014 optional>\n\n## Character code\n' + codeBlock;
+    var body = '## Author credit\n' + (author ? author : '<your handle, or "anonymous">') + '\n\n## Tagline\n<one line describing ' + name + '>\n\n## Description\n<background, personality, build notes \u2014 optional>\n\n## Character code\n' + codeBlock;
     var base = 'https://github.com/Mrcool210/Bullpen-/issues/new' +
         '?labels=' + encodeURIComponent('vault-submission') +
         '&title=' + encodeURIComponent('[Vault submission] ' + name);
