@@ -1,0 +1,56 @@
+# Community Vault intake
+name: Community Vault intake
+on:
+  issues:
+    types: [labeled]
+concurrency:
+  group: community-vault
+  cancel-in-progress: false
+jobs:
+  intake:
+    if: github.event.label.name == 'vault-approved'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate + publish character
+        id: intake
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: node .github/scripts/vault-intake.js
+      - name: Commit gallery update
+        run: |
+          git config user.name "bullpen-vault-bot"
+          git config user.email "bullpen-vault-bot@users.noreply.github.com"
+          git add gallery/
+          git diff --cached --quiet || git commit -m "Community Vault: add ${{ steps.intake.outputs.vault_name }} (${{ steps.intake.outputs.vault_id }})"
+          git push
+      - name: Comment on the issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ **${{ steps.intake.outputs.vault_name }}** is now live in the Community Vault! Thanks for sharing!`
+            });
+      - name: Close the issue
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            });
