@@ -19311,10 +19311,11 @@ function handlePortraitFile(input) {
     if(file.size > 4 * 1024 * 1024) { showAlert("That image is over 4MB.\nPlease choose a smaller file.", "Image Too Large", "🖼️"); return; }
     const reader = new FileReader();
     reader.onload = ev => {
-        // Resize to max 300px wide so it fits comfortably in localStorage alongside other vault data
+        // Max 1000px wide: matches the 904px trading-card art zone so card/PDF exports stay sharp.
+        // ~150-400KB per photo in localStorage at JPEG 0.82; HQ/vehicle thumbnails stay at 300px.
         const img = new Image();
         img.onload = () => {
-            const MAX_W = 300;
+            const MAX_W = 1000;
             const scale = img.width > MAX_W ? MAX_W / img.width : 1;
             const w = Math.round(img.width  * scale);
             const h = Math.round(img.height * scale);
@@ -19368,10 +19369,11 @@ function handleActionPhotoFile(input) {
     if(file.size > 4 * 1024 * 1024) { showAlert("That image is over 4MB.\nPlease choose a smaller file.", "Image Too Large", "🖼️"); return; }
     const reader = new FileReader();
     reader.onload = ev => {
-        // Resize to max 300px wide so it fits comfortably in localStorage alongside other vault data
+        // Max 1000px wide: matches the 904px trading-card art zone so card/PDF exports stay sharp.
+        // ~150-400KB per photo in localStorage at JPEG 0.82; HQ/vehicle thumbnails stay at 300px.
         const img = new Image();
         img.onload = () => {
-            const MAX_W = 300;
+            const MAX_W = 1000;
             const scale = img.width > MAX_W ? MAX_W / img.width : 1;
             const w = Math.round(img.width  * scale);
             const h = Math.round(img.height * scale);
