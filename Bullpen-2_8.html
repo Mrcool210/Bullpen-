@@ -29362,8 +29362,19 @@ window.bullpenDuplicateHero = function(idx) {
         var counts = {};
         powers.forEach(function(name) {
             var data = (typeof powersData !== 'undefined' && powersData) ? powersData[name] : null;
-            var set = (data && data.set) ? data.set : 'Basic';
-            counts[set] = (counts[set] || 0) + 1;
+            if (!data && typeof customPowersData !== 'undefined' && customPowersData) data = customPowersData[name];
+            var rawSet = (data && data.set) ? data.set : 'Basic';
+            // A power offered in multiple sets counts toward the player's
+            // chosen set (toggle pills on the power row), or the first listed
+            // set by default — never a combined "A, B" bucket. Same rule as
+            // the bonus-slot math in getUsedSets().
+            var parts = String(rawSet).split(', ').map(function(s){ return s.trim(); }).filter(function(s){ return s; });
+            var setKey = parts.length ? parts[0] : 'Basic';
+            if (parts.length > 1 && typeof charPSetChoice !== 'undefined' && charPSetChoice) {
+                var choice = charPSetChoice[name];
+                if (choice && parts.indexOf(choice) !== -1) setKey = choice;
+            }
+            counts[setKey] = (counts[setKey] || 0) + 1;
         });
         return counts;
     }
