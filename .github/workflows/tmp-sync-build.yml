@@ -1,0 +1,23 @@
+name: tmp-sync-build
+on:
+  push:
+    paths:
+      - .github/workflows/tmp-sync-build.yml
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync 2.8.1 build files
+        run: |
+          cp Bullpen-2_8_1.html Bullpen-2_8.html
+          cp Bullpen-2_8_1.html index.html
+          rm Bullpen-2_8_1.html
+          rm .github/workflows/tmp-sync-build.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Bullpen 2.8.1: working view-mode switcher, Community Vault submit fix"
+          git push
