@@ -1,0 +1,29 @@
+name: tmp-sync282
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync 2.8.2 build
+        run: |
+          set -e
+          cp Bullpen-2_8_1.html Bullpen-2_8.html
+          cp Bullpen-2_8_1.html index.html
+          rm Bullpen-2_8_1.html
+          rm .github/workflows/tmp-sync282.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Bullpen 2.8.2: sync build files (Bullpen-2_8.html and index.html)"
+          git push
