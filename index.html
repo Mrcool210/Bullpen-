@@ -5547,7 +5547,15 @@ Characters shared by the Bullpen community. Browse them, view their sheets, add 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">
 <label for="cvAuthor" style="white-space:nowrap;">Posting as:</label>
 <input id="cvAuthor" oninput="if(typeof cvSaveAuthor==='function')cvSaveAuthor(this.value);" placeholder="your handle (saved on this device)" maxlength="80" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">
-</div>\n<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">\n<label for="cvTagline" style="white-space:nowrap;">Tagline:</label>\n<input id="cvTagline" placeholder="one line describing your hero" maxlength="120" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">\n</div>\n<div style="margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">\n<label for="cvDescription" style="display:block;margin-bottom:4px;">Description:</label>\n<textarea id="cvDescription" placeholder="background, personality, build notes (optional)" rows="3" maxlength="2000" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;resize:vertical;"></textarea>\n</div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">
+<label for="cvTagline" style="white-space:nowrap;">Tagline:</label>
+<input id="cvTagline" placeholder="one line describing your hero" maxlength="120" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">
+</div>
+<div style="margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">
+<label for="cvDescription" style="display:block;margin-bottom:4px;">Description:</label>
+<textarea id="cvDescription" placeholder="background, personality, build notes (optional)" rows="3" maxlength="2000" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;resize:vertical;"></textarea>
+</div>
 <div id="cvList" style="display:flex;flex-direction:column;gap:10px;"></div>
 <div id="cvDetail" style="display:none;margin-top:12px;"></div>
 </details>
