@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-14T08:23:20.774Z",
+  "updatedAt": "2026-10-14T08:27:45.648Z",
   "characters": [
     {
       "id": "echo-mara-voss",
@@ -72,27 +72,6 @@
       "submittedAt": "2026-10-14T07:39:24.515Z",
       "sourceIssue": 4,
       "file": "chars/portal-mv7su7ky.json"
-    },
-    {
-      "id": "spider-man-mv7sikld",
-      "name": "Spider-Man",
-      "author": "<Mrcool210\">",
-      "rank": 4,
-      "tagline": "<TEST Spider-Man>",
-      "description": "<background, personality, build notes — optional>",
-      "powers": [
-        "Brilliance 1",
-        "Combat Trickery",
-        "Evasion",
-        "Inspiration",
-        "Integrity",
-        "Mighty 1",
-        "Wisecracker",
-        "Jump 1"
-      ],
-      "submittedAt": "2026-10-14T07:30:21.505Z",
-      "sourceIssue": 1,
-      "file": "chars/spider-man-mv7sikld.json"
     }
   ]
 }
