@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-14T07:31:17.788Z",
+  "updatedAt": "2026-10-14T07:39:24.514Z",
   "characters": [
     {
       "id": "echo-mara-voss",
@@ -51,6 +51,27 @@
       ],
       "submittedAt": "2026-09-29T14:18:25.250Z",
       "file": "chars/nightshade-theo-marsh.json"
+    },
+    {
+      "id": "portal-mv7su7ky",
+      "name": "Portal",
+      "author": "Mrcool210",
+      "rank": 4,
+      "tagline": "<one line describing Portal>",
+      "description": "<background, personality, build notes — optional>",
+      "powers": [
+        "Accuracy 2",
+        "Battle Plan",
+        "Inspiration",
+        "Double Tap",
+        "Stopping Power",
+        "Summon Portal",
+        "Suppressive Fire",
+        "Covering Fire"
+      ],
+      "submittedAt": "2026-10-14T07:39:24.515Z",
+      "sourceIssue": 4,
+      "file": "chars/portal-mv7su7ky.json"
     },
     {
       "id": "spider-man-mv7sikld",
