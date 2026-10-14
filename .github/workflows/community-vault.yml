@@ -2,13 +2,13 @@
 name: Community Vault intake
 on:
   issues:
-    types: [labeled]
+    types: [opened, labeled]
 concurrency:
   group: community-vault
   cancel-in-progress: false
 jobs:
   intake:
-    if: github.event.label.name == 'vault-approved'
+    if: contains(github.event.issue.labels.*.name, 'vault-submission')
     runs-on: ubuntu-latest
     permissions:
       contents: write
