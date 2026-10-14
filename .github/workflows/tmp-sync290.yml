@@ -1,0 +1,24 @@
+name: tmp-sync290
+on:
+  push:
+    paths:
+      - 'Bullpen-2_8_1.html'
+      - '.github/workflows/tmp-sync290.yml'
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync 2.8.9 build and remove temp files
+        run: |
+          cp Bullpen-2_8_1.html Bullpen-2_8.html
+          cp Bullpen-2_8_1.html index.html
+          rm Bullpen-2_8_1.html
+          rm .github/workflows/tmp-sync290.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Bullpen 2.8.9: sync Bullpen-2_8.html and index.html, remove temp files"
+          git push
