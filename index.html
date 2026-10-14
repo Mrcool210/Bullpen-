@@ -8054,6 +8054,29 @@ async function cvRefresh(force) {
     }
     cvRender();
 }
+function cvDeleteEntry(idx) {
+     var e = (_cvFiltered && _cvFiltered[idx]) || (_cvIndex && _cvIndex[idx]);
+     if (!e || !e.id) return;
+     var name = e.name || 'Unnamed Hero';
+     var doDelete = function () {
+       if (typeof showNotice === 'function') showNotice('Deleting ' + name + '\u2026');
+       fetch('https://bullpen-vault-relay.vercel.app/api/submit', {
+         method: 'POST', headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ action: 'delete', characterId: e.id, characterName: name })
+       }).then(function (r) { return r.json(); }).then(function (res) {
+         if (res && res.ok) {
+           if (typeof showAlert === 'function') showAlert(name + ' was removed from the Community Vault.', 'Deleted', '\u2705');
+           if (typeof cvRefresh === 'function') { try { cvRefresh(true); } catch (x) {} }
+         } else {
+           if (typeof showAlert === 'function') showAlert('Delete failed: ' + ((res && res.error) || 'unknown error'), 'Error', '\u26A0\uFE0F');
+         }
+       }).catch(function () {
+         if (typeof showAlert === 'function') showAlert('Could not reach the relay.', 'Error', '\u26A0\uFE0F');
+       });
+     };
+     if (typeof showConfirm === 'function') { showConfirm('Delete ' + name + ' from the Community Vault? This cannot be undone.', doDelete); }
+     else if (window.confirm('Delete ' + name + ' from the Community Vault?')) { doDelete(); }
+}
 function cvRender() {
     var list = document.getElementById('cvList');
     if (!list) return;
@@ -8084,7 +8107,7 @@ function cvRender() {
             '<button type="button" onclick="cvViewDetail(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:var(--bg-card);border:1px solid var(--border-light);color:var(--text-main);border-radius:6px;cursor:pointer;">&#x1F441; View sheet</button>' +
             '<button type="button" onclick="cvImport(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#0a2a44;border:1px solid #446688;color:#88ccff;border-radius:6px;cursor:pointer;">&#x1F4E5; Add to my Vault</button>' +
             '<button type="button" onclick="cvViewPDF(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#1a1400;border:1px solid #aa7700;color:#ffcc66;border-radius:6px;cursor:pointer;">&#x1F4C4; View PDF</button>' +
-            '<button type="button" onclick="cvDownloadPDF(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#7a2200;border:1px solid #cc4400;color:#ffddcc;border-radius:6px;cursor:pointer;">&#x2B07; Download PDF</button>' +
+            '<button type="button" onclick="cvDownloadPDF(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#7a2200;border:1px solid #cc4400;color:#ffddcc;border-radius:6px;cursor:pointer;">&#x2B07; Download PDF</button>' + '<button type="button" onclick="cvDeleteEntry(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#3a0a0a;border:1px solid #aa3333;color:#ff8888;border-radius:6px;cursor:pointer;">&#x1F5D1; Delete</button>' +
             '</div></div>';
     }).join('');
 }
