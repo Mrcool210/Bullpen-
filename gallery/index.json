@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-29T14:18:25.250Z",
+  "updatedAt": "2026-10-14T07:27:10.918Z",
   "characters": [
     {
       "id": "echo-mara-voss",
@@ -16,6 +16,27 @@
       ],
       "submittedAt": "2026-09-29T14:18:25.250Z",
       "file": "chars/echo-mara-voss.json"
+    },
+    {
+      "id": "moon-knight-mv7sehja",
+      "name": "Moon Knight",
+      "author": "<your handle, or \"anonymous\">",
+      "rank": 4,
+      "tagline": "<one line describing Moon Knight>",
+      "description": "<background, personality, build notes — optional>",
+      "powers": [
+        "Accuracy 2",
+        "Mighty 2",
+        "Slow-Motion Dodge",
+        "Uncanny 1",
+        "Attack Stance",
+        "Fast Strikes",
+        "Chain Strikes",
+        "Exploit"
+      ],
+      "submittedAt": "2026-10-14T07:27:10.919Z",
+      "sourceIssue": 3,
+      "file": "chars/moon-knight-mv7sehja.json"
     },
     {
       "id": "nightshade-theo-marsh",
