@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-14T07:27:10.918Z",
+  "updatedAt": "2026-10-14T07:30:21.505Z",
   "characters": [
     {
       "id": "echo-mara-voss",
@@ -51,6 +51,27 @@
       ],
       "submittedAt": "2026-09-29T14:18:25.250Z",
       "file": "chars/nightshade-theo-marsh.json"
+    },
+    {
+      "id": "spider-man-mv7sikld",
+      "name": "Spider-Man",
+      "author": "<Mrcool210\">",
+      "rank": 4,
+      "tagline": "<TEST Spider-Man>",
+      "description": "<background, personality, build notes — optional>",
+      "powers": [
+        "Brilliance 1",
+        "Combat Trickery",
+        "Evasion",
+        "Inspiration",
+        "Integrity",
+        "Mighty 1",
+        "Wisecracker",
+        "Jump 1"
+      ],
+      "submittedAt": "2026-10-14T07:30:21.505Z",
+      "sourceIssue": 1,
+      "file": "chars/spider-man-mv7sikld.json"
     }
   ]
 }
