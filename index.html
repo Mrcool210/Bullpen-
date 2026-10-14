@@ -26994,7 +26994,7 @@ window.generateRandomNPC = generateRandomNPC;
 
 // ── Auto-activate Mobile Lite mode on small screens ──────────────────────────
 (function(){
-    const STYLE_KEY = 'bullpen_ui_style_v1';
+    const STYLE_KEY = 'bullpenUIStyle';
     function autoActivateMobile() {
         // Only auto-set on very first visit (no stored preference)
         const stored = (function(){ try { return localStorage.getItem(STYLE_KEY); } catch(e){ return null; } })();
