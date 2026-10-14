@@ -5547,7 +5547,7 @@ Characters shared by the Bullpen community. Browse them, view their sheets, add 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">
 <label for="cvAuthor" style="white-space:nowrap;">Posting as:</label>
 <input id="cvAuthor" oninput="if(typeof cvSaveAuthor==='function')cvSaveAuthor(this.value);" placeholder="your handle (saved on this device)" maxlength="80" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">
-</div>
+</div>\n<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">\n<label for="cvTagline" style="white-space:nowrap;">Tagline:</label>\n<input id="cvTagline" placeholder="one line describing your hero" maxlength="120" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">\n</div>\n<div style="margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">\n<label for="cvDescription" style="display:block;margin-bottom:4px;">Description:</label>\n<textarea id="cvDescription" placeholder="background, personality, build notes (optional)" rows="3" maxlength="2000" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;resize:vertical;"></textarea>\n</div>
 <div id="cvList" style="display:flex;flex-direction:column;gap:10px;"></div>
 <div id="cvDetail" style="display:none;margin-top:12px;"></div>
 </details>
@@ -8287,7 +8287,9 @@ function cvSubmitHero() {
              var _name = _hero.heroName || _hero.realName || 'Untitled Hero';
              var _author = (typeof cvGetAuthor === 'function') ? cvGetAuthor() : '';
              var _codeBlock = '\`\`\`bullpen\n' + _made.code + '\n\`\`\`\n';
-             var _body = '## Author credit\n' + (_author ? _author : '<your handle, or "anonymous">') + '\n\n## Tagline\n<one line describing ' + _name + '>\n\n## Description\n<background, personality, build notes \u2014 optional>\n\n## Character code\n' + _codeBlock;
+             var _tagline = ''; try { var _tl = document.getElementById('cvTagline'); if (_tl) _tagline = _tl.value.trim(); } catch (e) {}
+              var _desc = ''; try { var _de = document.getElementById('cvDescription'); if (_de) _desc = _de.value.trim(); } catch (e) {}
+              var _body = '## Author credit\n' + (_author ? _author : 'anonymous') + '\n\n## Tagline\n' + (_tagline || 'A new hero for the vault.') + '\n\n## Description\n' + (_desc || 'No description provided.') + '\n\n## Character code\n' + _codeBlock;
              if (typeof showNotice === 'function') showNotice('Submitting ' + _name + ' to the Community Vault\u2026');
              fetch('https://bullpen-vault-relay.vercel.app/api/submit', {
                method: 'POST',
