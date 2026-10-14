@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-14T08:27:45.648Z",
+  "updatedAt": "2026-10-14T11:20:35.740Z",
   "characters": [
     {
       "id": "echo-mara-voss",
@@ -72,6 +72,27 @@
       "submittedAt": "2026-10-14T07:39:24.515Z",
       "sourceIssue": 4,
       "file": "chars/portal-mv7su7ky.json"
+    },
+    {
+      "id": "spider-man-earth-1048-mv80qnq4",
+      "name": "Spider-Man (Earth 1048)",
+      "author": "<your handle, or \"anonymous\">",
+      "rank": 4,
+      "tagline": "<one line describing Spider-Man (Earth 1048)>",
+      "description": "<background, personality, build notes — optional>",
+      "powers": [
+        "Combat Trickery",
+        "Evasion",
+        "Inspiration",
+        "Integrity",
+        "Mighty 1",
+        "Wisecracker",
+        "Additional Limbs",
+        "Jump 1"
+      ],
+      "submittedAt": "2026-10-14T11:20:35.740Z",
+      "sourceIssue": 6,
+      "file": "chars/spider-man-earth-1048-mv80qnq4.json"
     }
   ]
 }
