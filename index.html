@@ -5547,18 +5547,6 @@ Characters shared by the Bullpen community. Browse them, view their sheets, add 
 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);">
 <label for="cvAuthor" style="white-space:nowrap;">Posting as:</label>
 <input id="cvAuthor" oninput="if(typeof cvSaveAuthor==='function')cvSaveAuthor(this.value);" placeholder="your handle (saved on this device)" maxlength="80" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">
-</div> <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:0.8em;color:var(--text-sub);"> <label for="cvToken" style="white-space:nowrap;" title="One-time setup: paste a GitHub personal access token with repo scope to submit directly from the app. Stored only on this device.">GitHub token:</label> <input id="cvToken" type="password" oninput="if(typeof cvSaveToken==='function')cvSaveToken(this.value);" placeholder="ghp_... (one-time setup, stored on device)" maxlength="120" autocomplete="off" style="flex:1;min-width:160px;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.95em;">
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-<input id="cvSearch" oninput="if(typeof cvRender==='function')cvRender();" placeholder="&#x1F50D; Search name, author, or power..." style="flex:2;min-width:160px;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.85em;">
-<select id="cvRankFilter" onchange="if(typeof cvRender==='function')cvRender();" style="flex:1;min-width:110px;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text-main);font-size:0.85em;">
-<option value="">All ranks</option>
-<option value="1">Rank 1</option>
-<option value="2">Rank 2</option>
-<option value="3">Rank 3</option>
-<option value="4">Rank 4</option>
-<option value="5">Rank 5</option>
-<option value="6">Rank 6</option>
-</select>
 </div>
 <div id="cvList" style="display:flex;flex-direction:column;gap:10px;"></div>
 <div id="cvDetail" style="display:none;margin-top:12px;"></div>
@@ -8024,11 +8012,11 @@ function cvPrefillAuthor() {
         var el = document.getElementById('cvAuthor');
         if (el && !el.value) el.value = cvGetAuthor();
     } catch (e) {}
-} var CV_TOKEN_KEY='bullpen_cv_token_v1'; function cvSaveToken(v){try{localStorage.setItem(CV_TOKEN_KEY,String(v==null?'':v).trim().slice(0,120));}catch(e){}} function cvGetToken(){try{return (localStorage.getItem(CV_TOKEN_KEY)||'').trim();}catch(e){return '';}} function cvPrefillToken(){try{var el=document.getElementById('cvToken');if(el&&!el.value)el.value=cvGetToken();}catch(e){}}
+}
 function cvFirstOpen() {
     if (_cvLoaded) return;
     _cvLoaded = true;
-    cvPrefillAuthor(); cvPrefillToken();
+    cvPrefillAuthor();
     cvRefresh(false);
 }
 async function cvRefresh(force) {
