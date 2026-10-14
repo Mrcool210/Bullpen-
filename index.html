@@ -8054,6 +8054,27 @@ async function cvRefresh(force) {
     }
     cvRender();
 }
+var CV_MY_SUBMISSIONS_KEY = 'bullpen_cv_my_submissions_v1';
+function cvGetMySubmissions() {
+  try {
+    var raw = localStorage.getItem(CV_MY_SUBMISSIONS_KEY);
+    if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
+  } catch (e) {}
+  return [];
+}
+function cvAddMySubmission(name) {
+  try {
+    var arr = cvGetMySubmissions();
+    var n = String(name || '').trim();
+    if (n && arr.indexOf(n) === -1) { arr.push(n); localStorage.setItem(CV_MY_SUBMISSIONS_KEY, JSON.stringify(arr)); }
+  } catch (e) {}
+}
+function cvIsMySubmission(entry) {
+  if (!entry) return false;
+  var arr = cvGetMySubmissions();
+  var n = String(entry.name || '').trim();
+  return n && arr.indexOf(n) !== -1;
+}
 function cvDeleteEntry(idx) {
      var e = (_cvFiltered && _cvFiltered[idx]) || (_cvIndex && _cvIndex[idx]);
      if (!e || !e.id) return;
@@ -8107,7 +8128,7 @@ function cvRender() {
             '<button type="button" onclick="cvViewDetail(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:var(--bg-card);border:1px solid var(--border-light);color:var(--text-main);border-radius:6px;cursor:pointer;">&#x1F441; View sheet</button>' +
             '<button type="button" onclick="cvImport(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#0a2a44;border:1px solid #446688;color:#88ccff;border-radius:6px;cursor:pointer;">&#x1F4E5; Add to my Vault</button>' +
             '<button type="button" onclick="cvViewPDF(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#1a1400;border:1px solid #aa7700;color:#ffcc66;border-radius:6px;cursor:pointer;">&#x1F4C4; View PDF</button>' +
-            '<button type="button" onclick="cvDownloadPDF(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#7a2200;border:1px solid #cc4400;color:#ffddcc;border-radius:6px;cursor:pointer;">&#x2B07; Download PDF</button>' + '<button type="button" onclick="cvDeleteEntry(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#3a0a0a;border:1px solid #aa3333;color:#ff8888;border-radius:6px;cursor:pointer;">&#x1F5D1; Delete</button>' +
+            '<button type="button" onclick="cvDownloadPDF(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#7a2200;border:1px solid #cc4400;color:#ffddcc;border-radius:6px;cursor:pointer;">&#x2B07; Download PDF</button>' + (typeof cvIsMySubmission === 'function' && cvIsMySubmission(e) ? '<button type="button" onclick="cvDeleteEntry(' + i + ')" style="width:auto;padding:6px 12px;font-size:0.78em;background:#3a0a0a;border:1px solid #aa3333;color:#ff8888;border-radius:6px;cursor:pointer;">&#x1F5D1; Delete</button>' : '') +
             '</div></div>';
     }).join('');
 }
@@ -8274,7 +8295,7 @@ function cvSubmitHero() {
                body: JSON.stringify({ title: '[Vault submission] ' + _name, issueBody: _body })
              }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; }); }).then(function (res) {
                if (res.ok) {
-                 if (typeof showAlert === 'function') showAlert(_name + ' was submitted to the Community Vault! It will appear in the gallery shortly.', 'Submitted \u2713', '\uD83D\uDCE4');
+                 try { if (typeof cvAddMySubmission === 'function') cvAddMySubmission(_name); } catch (e) {} if (typeof showAlert === 'function') showAlert(_name + ' was submitted to the Community Vault! It will appear in the gallery shortly.', 'Submitted \u2713', '\uD83D\uDCE4');
                  if (typeof cvRefresh === 'function') { try { cvRefresh(true); } catch (e) {} }
                } else {
                  var _msg = (res.data && res.data.message) ? res.data.message : ('HTTP ' + res.status);
