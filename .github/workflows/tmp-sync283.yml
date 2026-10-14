@@ -1,0 +1,21 @@
+name: tmp-sync283
+
+on:
+  push:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync 2.8.3 build files
+        run: |
+          cp Bullpen-2_8_1.html Bullpen-2_8.html
+          cp Bullpen-2_8_1.html index.html
+          rm Bullpen-2_8_1.html
+          rm .github/workflows/tmp-sync283.yml
+          git config user.name "Mrcool210"
+          git config user.email "mrcool210@example.com"
+          git add -A
+          git commit -m "Bullpen 2.8.3: sync build files (Bullpen-2_8.html and index.html)" || echo "nothing to commit"
+          git push
