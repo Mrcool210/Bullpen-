@@ -31710,20 +31710,19 @@ window.bpVaultPickChoose = function(heroIndex) {
 </script>
 <script>
 /* ============================================================
-   20. GUIDED CHARACTER WIZARD — full step-by-step new-player
-   creator (Demiplane/Roll20-style one-decision-at-a-time flow).
-   This does NOT reimplement any game rules. Every step either
-   (a) temporarily moves the REAL sheet field(s) for that decision
-   into the wizard card, or (b) drives the real add/remove
-   functions (addPowerWithChecks, manualAdd, applyOrigin, etc.)
-   directly — so slots, budgets, and grants all work exactly as
-   they do on the normal sheet. When a step ends its fields move
-   right back to their normal place on the sheet.
+   20. GUIDED TOUR — step-by-step new-player walkthrough that
+   travels the REAL app pages (Bio → Stats → Powers) instead of
+   a separate card UI, so players learn where everything lives.
+   Each stop navigates to the real screen, scrolls to the real
+   field/section, highlights it, and shows an inline guidance
+   banner in normal document flow (no modals, no fixed layers).
+   All game actions drive the real functions (addPowerWithChecks,
+   manualAdd, applyOrigin, etc.) so slots, budgets, and grants
+   behave exactly as on the normal sheet.
    ============================================================ */
 (function() {
     function byId(id) { return document.getElementById(id); }
     var STAT_IDS = ['melee', 'agility', 'resilience', 'vigilance', 'ego', 'logic'];
-    var STAT_LABELS = { melee: 'MEL', agility: 'AGI', resilience: 'RES', vigilance: 'VIG', ego: 'EGO', logic: 'LOG' };
 
     // Suggestions keyed to the six real M.A.R.V.E.L. abilities (not an invented
     // archetype system) — "which ability do you want your hero built around"
@@ -31741,173 +31740,62 @@ window.bpVaultPickChoose = function(heroIndex) {
     var DEFAULT_ORIGINS = ['Mutant', 'High Tech', 'Special Training', 'Magic', 'Alien', 'Animal'];
     var DEFAULT_OCCS = ['Adventurer', 'Investigator', 'Scientist', 'Military', 'Spy', 'Engineer'];
 
-    var STEPS = ['welcome', 'identity', 'rank', 'origin', 'occupation', 'stats', 'powers', 'traits', 'review'];
-    var STEP_TITLES = {
-        welcome: 'Welcome', identity: 'Name Your Hero', rank: 'Choose a Rank', origin: 'Choose an Origin',
-        occupation: 'Choose an Occupation', stats: 'Ability Scores', powers: 'Powers', traits: 'Traits', review: 'Review & Finish'
-    };
+    var wiz = { step: 0, concept: null };
 
-    var wiz = { step: 0, concept: null, stash: [] };
-
-    function stashNode(node, slot) {
-        if (!node || !slot) return;
-        wiz.stash.push({ node: node, parent: node.parentNode, next: node.nextSibling });
-        slot.appendChild(node);
+    /* ---------- inline tour chrome: banner + highlight (no overlays) ---------- */
+    function ensureTourCSS() {
+        if (byId('bpTourCSS')) return;
+        var st = document.createElement('style');
+        st.id = 'bpTourCSS';
+        st.textContent =
+            '.bp-tour-banner{margin:12px;padding:12px 14px;border:2px solid var(--primary,#2f81f7);' +
+            'border-radius:12px;background:var(--card-bg,#16202e);}' +
+            '.bp-tour-head{display:flex;justify-content:space-between;align-items:center;gap:8px;' +
+            'font-size:.78em;color:var(--text-label,#9fb0c3);margin-bottom:6px;}' +
+            '.bp-tour-head button{background:none;border:none;color:var(--text-label,#9fb0c3);font-size:1em;}' +
+            '.bp-tour-bar{height:6px;border-radius:3px;background:var(--border-light,#2a3a4d);margin-bottom:10px;}' +
+            '.bp-tour-fill{height:100%;border-radius:3px;background:var(--primary,#2f81f7);transition:width .25s;}' +
+            '.bp-tour-title{font-size:1.05em;font-weight:700;margin-bottom:4px;}' +
+            '.bp-tour-text{font-size:.86em;line-height:1.45;margin-bottom:8px;}' +
+            '.bp-tour-extras{margin-bottom:8px;}' +
+            '.bp-tour-nav{display:flex;gap:8px;}' +
+            '.bp-tour-nav button{flex:1;min-height:42px;border-radius:8px;font-size:.85em;cursor:pointer;}' +
+            '.bp-tour-nav button.bp-tour-primary{background:var(--primary,#2f81f7);color:#fff;border:none;font-weight:700;}' +
+            '.bp-tour-highlight{outline:3px solid var(--primary,#2f81f7) !important;outline-offset:3px;border-radius:8px;}';
+        document.head.appendChild(st);
     }
-    function restoreStash() {
-        for (var i = wiz.stash.length - 1; i >= 0; i--) {
-            var s = wiz.stash[i];
-            if (s.parent) s.parent.insertBefore(s.node, s.next);
+    function clearTourBanner() {
+        var b = byId('bpTourBanner');
+        if (b && b.parentNode) b.parentNode.removeChild(b);
+    }
+    function clearTourHighlight() {
+        var els = document.querySelectorAll('.bp-tour-highlight');
+        for (var i = 0; i < els.length; i++) els[i].classList.remove('bp-tour-highlight');
+    }
+    function endTour() { clearTourBanner(); clearTourHighlight(); }
+
+    function tourBox(el) {
+        if (!el) return null;
+        return el.closest('details, .bio-field, .field, .card, .stat-grid') || el;
+    }
+    function findHeading(screenId, text) {
+        var sc = byId('screen-' + screenId);
+        if (!sc) return null;
+        var heads = sc.querySelectorAll('h2, h3, summary');
+        text = text.toLowerCase();
+        for (var i = 0; i < heads.length; i++) {
+            var t = (heads[i].textContent || '').trim().toLowerCase();
+            if (t === text || t.indexOf(text) === 0) return heads[i];
         }
-        wiz.stash = [];
+        return null;
     }
 
-    function ensureOverlay() {
-        var ov = byId('bpWizOverlay');
-        if (ov) return ov;
-        ov = document.createElement('div');
-        ov.id = 'bpWizOverlay';
-        ov.className = 'bp-wizoverlay';
-        ov.innerHTML =
-            '<div class="bp-wizoverlay-inner">' +
-              '<div class="bp-wiz-top">' +
-                '<div class="bp-wiz-progress-label" id="bpWizProgressLabel"></div>' +
-                '<button type="button" class="bp-wiz-skip" onclick="_bpWizSkip()">Exit to full sheet ✕</button>' +
-              '</div>' +
-              '<div class="bp-wiz-progressbar"><div class="bp-wiz-progressbar-fill" id="bpWizProgressFill"></div></div>' +
-              '<div class="bp-wiz-card" id="bpWizCard"></div>' +
-              '<div class="bp-wiz-nav">' +
-                '<button type="button" class="bp-wiz-back" id="bpWizBackBtn" onclick="_bpWizBack()">← Back</button>' +
-                '<button type="button" class="bp-wiz-next" id="bpWizNextBtn" onclick="_bpWizNext()">Next →</button>' +
-              '</div>' +
-            '</div>';
-        document.body.appendChild(ov);
-        return ov;
-    }
-
+    /* ---------- recommendations (same logic as before) ---------- */
     function currentConcept() { return wiz.concept ? CONCEPTS[wiz.concept] : null; }
 
     function chip(label, active, added, onclick) {
         var cls = 'bp-wiz-chip' + (active ? ' bp-wiz-chip-active' : '') + (added ? ' bp-wiz-chip-added' : '');
         return '<button type="button" class="' + cls + '" onclick="' + onclick + '">' + label + (added ? ' ✓' : '') + '</button>';
-    }
-
-    // ── Step bodies ──────────────────────────────────────────────
-    function renderWelcome() {
-        var html =
-            '<div class="bp-wiz-step-icon">🎓</div>' +
-            '<div class="bp-wiz-title">Let\'s build your first hero</div>' +
-            '<div class="bp-wiz-sub">A few quick questions, one at a time — name, Rank, Origin, Occupation, ' +
-            'stats, then a couple of starter Powers &amp; Traits. Nothing here is permanent; you can fine-tune ' +
-            'everything on the full sheet afterward.</div>' +
-            '<div class="bp-wiz-chip-label">Which ability do you want your hero built around? (optional — helps with suggestions)</div>' +
-            '<div class="bp-wiz-chip-row" id="bpWizConceptRow">' +
-            Object.keys(CONCEPTS).map(function(k) {
-                return chip(CONCEPTS[k].label, wiz.concept === k, false, "_bpWizSetConcept('" + k + "')");
-            }).join('') +
-            chip('🤷 Not sure yet', wiz.concept === null, false, "_bpWizSetConcept(null)") +
-            '</div>';
-        byId('bpWizCard').innerHTML = html;
-    }
-
-    function renderIdentity() {
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">What\'s their name?</div>' +
-            '<div class="bp-wiz-sub">Hero Name is required to save. Real Name is optional — appearance, background, ' +
-            'and everything else can be filled in later from the full sheet.</div>' +
-            '<div class="bp-wiz-field-slot" id="bpWizFieldSlot"></div>';
-        var slot = byId('bpWizFieldSlot');
-        var hn = byId('heroName'), rn = byId('realName');
-        if (hn) stashNode(hn.closest('.bio-field') || hn, slot);
-        if (rn) stashNode(rn.closest('.bio-field') || rn, slot);
-    }
-
-    function renderRank() {
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">Choose a Rank</div>' +
-            '<div class="bp-wiz-sub">Rank sets your ability score budget, how many power &amp; trait picks you get, ' +
-            'and your starting Karma. New to the game? Rank 2 or 3 is a comfortable starting point.</div>' +
-            '<div class="bp-wiz-field-slot" id="bpWizFieldSlot"></div>';
-        var slot = byId('bpWizFieldSlot');
-        var r = byId('rank');
-        if (r) stashNode(r.closest('.bio-field') || r, slot);
-    }
-
-    function renderOrigin() {
-        var c = currentConcept();
-        var list = c ? c.origins : DEFAULT_ORIGINS;
-        var cur = (byId('origin') || {}).value || '';
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">Choose an Origin</div>' +
-            '<div class="bp-wiz-sub">Origin explains how your hero got their powers — it automatically grants a ' +
-            'package of traits and tags (for example Mutant, Weird Science, or Magic).</div>' +
-            '<div class="bp-wiz-chip-label">' + (c ? 'Suggested for ' + c.label.replace(/^\S+\s/, '') : 'Popular for new players') + '</div>' +
-            '<div class="bp-wiz-chip-row">' +
-            list.map(function(o) { return chip(o, cur === o, false, "_bpWizPickOrigin('" + o.replace(/'/g, "\\'") + "')"); }).join('') +
-            '</div>' +
-            '<div class="bp-wiz-chip-label">Or choose any Origin</div>' +
-            '<div class="bp-wiz-field-slot" id="bpWizFieldSlot"></div>';
-        var slot = byId('bpWizFieldSlot');
-        var o = byId('origin');
-        if (o) stashNode(o.closest('.bio-field') || o, slot);
-    }
-    window._bpWizPickOrigin = function(name) {
-        var o = byId('origin');
-        if (!o) return;
-        o.value = name;
-        if (typeof applyOrigin === 'function') applyOrigin();
-        renderStep();
-    };
-
-    function renderOccupation() {
-        var c = currentConcept();
-        var list = c ? c.occs : DEFAULT_OCCS;
-        var cur = (byId('occupation') || {}).value || '';
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">Choose an Occupation</div>' +
-            '<div class="bp-wiz-sub">Occupation is your hero\'s civilian job or role — it grants its own traits and ' +
-            'tags on top of your Origin\'s.</div>' +
-            '<div class="bp-wiz-chip-label">' + (c ? 'Suggested for ' + c.label.replace(/^\S+\s/, '') : 'Popular for new players') + '</div>' +
-            '<div class="bp-wiz-chip-row">' +
-            list.map(function(o) { return chip(o, cur === o, false, "_bpWizPickOcc('" + o.replace(/'/g, "\\'") + "')"); }).join('') +
-            '</div>' +
-            '<div class="bp-wiz-chip-label">Or choose any Occupation</div>' +
-            '<div class="bp-wiz-field-slot" id="bpWizFieldSlot"></div>';
-        var slot = byId('bpWizFieldSlot');
-        var o = byId('occupation');
-        if (o) stashNode(o.closest('.bio-field') || o, slot);
-    }
-    window._bpWizPickOcc = function(name) {
-        var o = byId('occupation');
-        if (!o) return;
-        o.value = name;
-        if (typeof applyOccupation === 'function') applyOccupation();
-        renderStep();
-    };
-
-    function renderStats() {
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">M.A.R.V.E.L. Ability Scores</div>' +
-            '<div class="bp-wiz-sub">Six scores: Melee, Agility, Resilience, Vigilance, Ego, Logic. Higher is better at ' +
-            'that kind of action — put your best scores where your concept needs them. Nothing here is locked in.</div>' +
-            '<div class="bp-wiz-counter" id="bpWizStatTotal">—</div>' +
-            '<div class="bp-wiz-field-slot" id="bpWizFieldSlot"></div>';
-        var slot = byId('bpWizFieldSlot');
-        var grid = document.querySelector('.stat-grid');
-        if (grid) stashNode(grid, slot);
-        STAT_IDS.forEach(function(id) {
-            var el = byId(id);
-            if (el && !el._bpWizBound) { el.addEventListener('change', updateStatTotal); el._bpWizBound = true; }
-        });
-        updateStatTotal();
-    }
-    function updateStatTotal() {
-        var el = byId('bpWizStatTotal');
-        if (!el) return;
-        var total = 0;
-        STAT_IDS.forEach(function(id) { var e = byId(id); total += parseInt((e && e.value) || 0, 10) || 0; });
-        var rank = (typeof getRankNumber === 'function' && typeof getRankRawValue === 'function') ? getRankNumber(getRankRawValue()) : 1;
-        el.innerHTML = '<span>' + total + '</span> / ~' + (rank * 5) + ' points assigned (guideline, not a hard cap)';
     }
 
     function powerRecommendations() {
@@ -31930,51 +31818,6 @@ window.bpVaultPickChoose = function(heroIndex) {
         return out.slice(0, 10);
     }
 
-    function renderPowers() {
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">Pick What Makes Them Super</div>' +
-            '<div class="bp-wiz-sub">Every power costs "slots" from your budget. Start with 2–3 that clearly fit your ' +
-            'concept — you can add more as you rank up.</div>' +
-            '<div id="bpWizPowersBody"></div>';
-        renderPowersBody();
-    }
-    function renderPowersBody() {
-        var body = byId('bpWizPowersBody');
-        if (!body) return;
-        if (typeof recalcSlots === 'function') recalcSlots();
-        var rank = (typeof getRankNumber === 'function' && typeof getRankRawValue === 'function') ? getRankNumber(getRankRawValue()) : 1;
-        var max = typeof getMaxSlots === 'function' ? getMaxSlots(rank) : rank * 4;
-        var used = typeof window.currentSlots === 'number' ? window.currentSlots : 0;
-        var owned = typeof getPaidPowers === 'function' ? getPaidPowers() : [];
-        var recs = powerRecommendations();
-        var html = '<div class="bp-wiz-counter">Power Picks: <span>' + used + ' / ' + max + '</span></div>';
-        if (recs.length) {
-            html += '<div class="bp-wiz-chip-label">Recommended for your build</div>' +
-                '<div class="bp-wiz-chip-row">' +
-                recs.map(function(p) {
-                    var added = owned.indexOf(p) !== -1;
-                    return chip(p, false, added, added ? 'void(0)' : "_bpWizAddPower('" + p.replace(/'/g, "\\'") + "')");
-                }).join('') + '</div>';
-        }
-        if (owned.length) {
-            html += '<div class="bp-wiz-chip-label">Your powers</div><div class="bp-wiz-list">' +
-                owned.map(function(p) {
-                    return '<div class="bp-wiz-list-item"><span>' + p + '</span><button type="button" onclick="_bpWizRemovePower(\'' + p.replace(/'/g, "\\'") + '\')">✕</button></div>';
-                }).join('') + '</div>';
-        }
-        html += '<div class="bp-wiz-sub">Want more options? Finish the wizard, then use the full Powers screen to browse everything.</div>';
-        body.innerHTML = html;
-    }
-    window._bpWizAddPower = function(name) {
-        if (typeof addPowerWithChecks === 'function') addPowerWithChecks(name);
-        setTimeout(renderPowersBody, 60);
-        setTimeout(renderPowersBody, 450);
-    };
-    window._bpWizRemovePower = function(name) {
-        if (typeof removeManualPower === 'function') removeManualPower(name);
-        renderPowersBody();
-    };
-
     function traitRecommendations() {
         var origin = (byId('origin') || {}).value || '';
         var occ = (byId('occupation') || {}).value || '';
@@ -31985,132 +31828,280 @@ window.bpVaultPickChoose = function(heroIndex) {
         (ocd.traits || []).forEach(function(t) { if (out.indexOf(t) === -1) out.push(t); });
         return out.slice(0, 10);
     }
-    function renderTraits() {
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">Traits</div>' +
-            '<div class="bp-wiz-sub">Traits are smaller narrative abilities and don\'t cost power slots. Some are ' +
-            'already granted free by your Origin/Occupation and show up automatically on the sheet.</div>' +
-            '<div id="bpWizTraitsBody"></div>';
-        renderTraitsBody();
-    }
-    function renderTraitsBody() {
-        var body = byId('bpWizTraitsBody');
-        if (!body) return;
-        var owned = typeof getPaidTraits === 'function' ? getPaidTraits() : (window.charT || []);
-        var granted = typeof getBonusTraits === 'function' ? getBonusTraits() : [];
-        var recs = traitRecommendations().filter(function(t) { return granted.indexOf(t) === -1; });
-        var html = '';
-        if (recs.length) {
-            html += '<div class="bp-wiz-chip-label">Recommended for your Origin/Occupation</div><div class="bp-wiz-chip-row">' +
-                recs.map(function(t) {
-                    var added = owned.indexOf(t) !== -1;
-                    return chip(t, false, added, added ? 'void(0)' : "_bpWizAddTrait('" + t.replace(/'/g, "\\'") + "')");
+
+    /* ---------- tour stops: Bio → Stats → Powers, on the real pages ---------- */
+    var STOPS = [
+        { id: 'welcome', screen: 'bio', title: 'Build your hero — guided tour',
+          text: 'We\'ll walk through the real pages together: Bio, Stats, then Powers & Traits. ' +
+                'Everything you tap is the actual sheet, so there\'s nothing to re-learn later. ' +
+                'Pick a focus below if you want suggestions tailored to it (optional).',
+          target: null, extras: 'concept' },
+        { id: 'identity', screen: 'bio', title: 'Name your hero',
+          text: 'Start at the top of the Bio page: give your hero a name (and a secret identity, if they have one).',
+          target: function() { return byId('heroName'); } },
+        { id: 'rank', screen: 'bio', title: 'Choose a rank',
+          text: 'Rank sets your power budget: 4 power slots per rank. Most starting heroes are Rank 2–3; ' +
+                'established names sit at Rank 4–5. You can raise it later.',
+          target: function() { return byId('rank'); } },
+        { id: 'origin', screen: 'bio', title: 'Choose an origin',
+          text: 'Origin is how your hero got their powers. It grants a free package of traits and tags — ' +
+                'tap a suggestion below, or pick anything from the highlighted list.',
+          target: function() { return byId('origin'); }, extras: 'origin' },
+        { id: 'occupation', screen: 'bio', title: 'Choose an occupation',
+          text: 'What your hero does day-to-day. Like origin, it grants free traits and tags.',
+          target: function() { return byId('occupation'); }, extras: 'occupation' },
+        { id: 'stats', screen: 'stats', title: 'M.A.R.V.E.L. ability scores',
+          text: 'Six scores: Melee, Agility, Resilience, Vigilance, Ego, Logic. Higher is better at that kind ' +
+                'of action — put your best scores where your concept needs them. Nothing here is locked in.',
+          target: function() { return document.querySelector('.stat-grid'); }, extras: 'statcount' },
+        { id: 'powers', screen: 'powers', title: 'Pick what makes them super',
+          text: 'Every power costs "slots" from your budget. Start with 2–3 that clearly fit your concept — ' +
+                'you can add more as you rank up. Tap a suggestion to add it; the full list is right below.',
+          target: function() { return findHeading('powers', 'Powers'); }, extras: 'powers' },
+        { id: 'traits', screen: 'powers', title: 'Traits',
+          text: 'Traits are smaller narrative abilities and don\'t cost power slots. Some are already granted ' +
+                'free by your Origin/Occupation and show up automatically.',
+          target: function() { return findHeading('powers', 'Traits'); }, extras: 'traits' },
+        { id: 'review', screen: 'powers', title: 'Ready to finish?',
+          text: 'Here\'s what you\'ve built. Finish the tour to keep customizing on the full sheet — ' +
+                'appearance, equipment, and more powers are all there whenever you want them.',
+          target: null, extras: 'review' }
+    ];
+    var STEP_TITLES = {
+        welcome: 'Welcome', identity: 'Name Your Hero', rank: 'Choose a Rank', origin: 'Choose an Origin',
+        occupation: 'Choose an Occupation', stats: 'Ability Scores', powers: 'Powers', traits: 'Traits', review: 'Review & Finish'
+    };
+
+    function escQuote(s) { return String(s).replace(/'/g, "\\'"); }
+
+    function stopExtrasHTML(which) {
+        if (!which) return '';
+        if (which === 'concept') {
+            return '<div class="bp-wiz-chip-label">Which ability is your hero built around? (optional)</div>' +
+                '<div class="bp-wiz-chip-row">' +
+                Object.keys(CONCEPTS).map(function(k) {
+                    return chip(CONCEPTS[k].label, wiz.concept === k, false, "_bpWizSetConcept('" + k + "')");
                 }).join('') + '</div>';
+        }
+        if (which === 'origin' || which === 'occupation') {
+            var c = currentConcept();
+            var isOrigin = which === 'origin';
+            var list = c ? (isOrigin ? c.origins : c.occs) : (isOrigin ? DEFAULT_ORIGINS : DEFAULT_OCCS);
+            var cur = (byId(isOrigin ? 'origin' : 'occupation') || {}).value || '';
+            var fn = isOrigin ? '_bpWizPickOrigin' : '_bpWizPickOcc';
+            return '<div class="bp-wiz-chip-label">' + (c ? 'Suggested' : 'Popular for new players') + ' — tap to select</div>' +
+                '<div class="bp-wiz-chip-row">' +
+                list.map(function(o) { return chip(o, cur === o, false, fn + "('" + escQuote(o) + "')"); }).join('') + '</div>';
+        }
+        if (which === 'statcount') {
+            return '<div class="bp-wiz-counter" id="bpTourStatTotal">—</div>';
+        }
+        if (which === 'powers') {
+            if (typeof recalcSlots === 'function') recalcSlots();
+            var rank = (typeof getRankNumber === 'function' && typeof getRankRawValue === 'function') ? getRankNumber(getRankRawValue()) : 1;
+            var max = typeof getMaxSlots === 'function' ? getMaxSlots(rank) : rank * 4;
+            var used = typeof window.currentSlots === 'number' ? window.currentSlots : 0;
+            var owned = typeof getPaidPowers === 'function' ? getPaidPowers() : [];
+            var recs = powerRecommendations();
+            var h = '<div class="bp-wiz-counter">Power Picks: <span>' + used + ' / ' + max + '</span></div>';
+            if (recs.length) {
+                h += '<div class="bp-wiz-chip-label">Recommended for your build — tap to add</div>' +
+                    '<div class="bp-wiz-chip-row">' +
+                    recs.map(function(p) {
+                        var added = owned.indexOf(p) !== -1;
+                        return chip(p, false, added, added ? 'void(0)' : "_bpWizAddPower('" + escQuote(p) + "')");
+                    }).join('') + '</div>';
+            }
+            if (owned.length) {
+                h += '<div class="bp-wiz-chip-label">Your powers</div><div class="bp-wiz-list">' +
+                    owned.map(function(p) {
+                        return '<div class="bp-wiz-list-item"><span>' + p + '</span><button type="button" onclick="_bpWizRemovePower(\'' + escQuote(p) + '\')">✕</button></div>';
+                    }).join('') + '</div>';
+            }
+            return h;
+        }
+        if (which === 'traits') {
+            var recs2 = traitRecommendations();
+            var ownedT = typeof getPaidTraits === 'function' ? getPaidTraits() : [];
+            var h2 = '';
+            if (recs2.length) {
+                h2 += '<div class="bp-wiz-chip-label">Suggested — tap to add</div><div class="bp-wiz-chip-row">' +
+                    recs2.map(function(t) {
+                        var added = ownedT.indexOf(t) !== -1;
+                        return chip(t, false, added, added ? 'void(0)' : "_bpWizAddTrait('" + escQuote(t) + "')");
+                    }).join('') + '</div>';
+            }
+            if (ownedT.length) {
+                h2 += '<div class="bp-wiz-chip-label">Your traits</div><div class="bp-wiz-list">' +
+                    ownedT.map(function(t) {
+                        return '<div class="bp-wiz-list-item"><span>' + t + '</span><button type="button" onclick="_bpWizRemoveTrait(\'' + escQuote(t) + '\')">✕</button></div>';
+                    }).join('') + '</div>';
+            }
+            return h2;
+        }
+        if (which === 'review') {
+            var name = (byId('heroName') || {}).value || '(unnamed)';
+            var rrank = (typeof getRankLabel === 'function' && typeof getRankRawValue === 'function') ? getRankLabel(getRankRawValue()) : (byId('rank') || {}).value;
+            var rorigin = (byId('origin') || {}).value || '(none)';
+            var rocc = (byId('occupation') || {}).value || '(none)';
+            var rpowers = typeof getPaidPowers === 'function' ? getPaidPowers() : [];
+            var rtraits = typeof getPaidTraits === 'function' ? getPaidTraits() : [];
+            var statsHtml = STAT_IDS.map(function(id) {
+                var el = byId(id);
+                return '<div class="bp-wiz-summary-row"><span>' + id.charAt(0).toUpperCase() + id.slice(1) + '</span><span>' + ((el && el.value) || 0) + '</span></div>';
+            }).join('');
+            return '<div class="bp-wiz-summary-row"><span>Hero</span><span>' + name + '</span></div>' +
+                '<div class="bp-wiz-summary-row"><span>Rank</span><span>' + rrank + '</span></div>' +
+                '<div class="bp-wiz-summary-row"><span>Origin</span><span>' + rorigin + '</span></div>' +
+                '<div class="bp-wiz-summary-row"><span>Occupation</span><span>' + rocc + '</span></div>' +
+                statsHtml +
+                '<div class="bp-wiz-summary-row"><span>Powers</span><span>' + (rpowers.length ? rpowers.join(', ') : '—') + '</span></div>' +
+                '<div class="bp-wiz-summary-row"><span>Traits</span><span>' + (rtraits.length ? rtraits.join(', ') : '—') + '</span></div>';
+        }
+        return '';
+    }
+
+    function bindStatCounter() {
+        function update() {
+            var el = byId('bpTourStatTotal');
+            if (!el) return;
+            var total = 0;
+            STAT_IDS.forEach(function(id) { var e = byId(id); total += parseInt((e && e.value) || 0, 10) || 0; });
+            var rank = (typeof getRankNumber === 'function' && typeof getRankRawValue === 'function') ? getRankNumber(getRankRawValue()) : 1;
+            el.innerHTML = '<span>' + total + '</span> / ~' + (rank * 5) + ' points assigned (guideline, not a hard cap)';
+        }
+        STAT_IDS.forEach(function(id) {
+            var e2 = byId(id);
+            if (e2 && !e2._bpTourBound) { e2.addEventListener('change', update); e2._bpTourBound = true; }
+        });
+        update();
+    }
+
+    function renderTourBanner() {
+        var banner = byId('bpTourBanner');
+        if (!banner) return;
+        var stop = STOPS[wiz.step];
+        var n = STOPS.length;
+        var label = 'Step ' + (wiz.step + 1) + ' of ' + n + ' — ' + (STEP_TITLES[stop.id] || stop.title);
+        banner.innerHTML =
+            '<div class="bp-tour-head"><span>' + label + '</span>' +
+            '<button type="button" onclick="_bpWizSkip()" title="Exit tour">Exit tour ✕</button></div>' +
+            '<div class="bp-tour-bar"><div class="bp-tour-fill" style="width:' +
+            Math.round((wiz.step / (n - 1)) * 100) + '%"></div></div>' +
+            '<div class="bp-tour-title">' + stop.title + '</div>' +
+            '<div class="bp-tour-text">' + stop.text + '</div>' +
+            '<div class="bp-tour-extras">' + stopExtrasHTML(stop.extras) + '</div>' +
+            '<div class="bp-tour-nav">' +
+            '<button type="button" onclick="_bpWizBack()" style="visibility:' +
+            (wiz.step === 0 ? 'hidden' : 'visible') + '">← Back</button>' +
+            '<button type="button" class="bp-tour-primary" onclick="_bpWizNext()">' +
+            (wiz.step === n - 1 ? '✅ Finish' : 'Next →') + '</button></div>';
+        if (stop.extras === 'statcount') bindStatCounter();
+    }
+
+    function tourGo() {
+        clearTourBanner();
+        clearTourHighlight();
+        ensureTourCSS();
+        var stop = STOPS[wiz.step];
+        if (typeof window.appNavTo === 'function') window.appNavTo(stop.screen);
+        var screen = byId('screen-' + stop.screen);
+        var banner = document.createElement('div');
+        banner.id = 'bpTourBanner';
+        banner.className = 'bp-tour-banner';
+        if (screen) {
+            if (screen.firstChild) screen.insertBefore(banner, screen.firstChild);
+            else screen.appendChild(banner);
+        }
+        renderTourBanner();
+        var tgt = null;
+        try { tgt = stop.target ? stop.target() : null; } catch (e) { tgt = null; }
+        var box = tourBox(tgt);
+        if (box) {
+            box.classList.add('bp-tour-highlight');
+            setTimeout(function() {
+                try { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+            }, 150);
         } else {
-            html += '<div class="bp-wiz-sub">No extra suggestions beyond what your Origin/Occupation already grant — you can add manual picks on the full sheet.</div>';
+            try { window.scrollTo(0, 0); } catch (e) {}
+            if (screen) { try { screen.scrollTop = 0; } catch (e2) {} }
         }
-        if (owned.length) {
-            html += '<div class="bp-wiz-chip-label">Your manually added traits</div><div class="bp-wiz-list">' +
-                owned.map(function(t) {
-                    return '<div class="bp-wiz-list-item"><span>' + t + '</span><button type="button" onclick="_bpWizRemoveTrait(\'' + t.replace(/'/g, "\\'") + '\')">✕</button></div>';
-                }).join('') + '</div>';
-        }
-        body.innerHTML = html;
     }
+
+    /* ---------- tour actions (drive the real sheet functions) ---------- */
+    window._bpWizSetConcept = function(k) { wiz.concept = k; renderTourBanner(); };
+    window._bpWizPickOrigin = function(name) {
+        var o = byId('origin');
+        if (!o) return;
+        o.value = name;
+        if (typeof applyOrigin === 'function') applyOrigin();
+        renderTourBanner();
+    };
+    window._bpWizPickOcc = function(name) {
+        var o = byId('occupation');
+        if (!o) return;
+        o.value = name;
+        if (typeof applyOccupation === 'function') applyOccupation();
+        renderTourBanner();
+    };
+    window._bpWizAddPower = function(name) {
+        if (typeof addPowerWithChecks === 'function') addPowerWithChecks(name);
+        setTimeout(renderTourBanner, 60);
+        setTimeout(renderTourBanner, 450);
+    };
+    window._bpWizRemovePower = function(name) {
+        if (typeof removeManualPower === 'function') removeManualPower(name);
+        renderTourBanner();
+    };
     window._bpWizAddTrait = function(name) {
         var sel = byId('tSelect');
         if (!sel) return;
         sel.value = name;
         if (sel.value !== name) {
-            if (typeof showNotice === 'function') showNotice('Add "' + name + '" from the Traits section on the full sheet.');
+            if (typeof showNotice === 'function') showNotice('Add "' + name + '" from the Traits section below.');
             return;
         }
         if (typeof manualAdd === 'function') manualAdd('trait');
-        renderTraitsBody();
+        renderTourBanner();
     };
     window._bpWizRemoveTrait = function(name) {
         var arr = window.charT || [];
         var idx = arr.indexOf(name);
-        if (idx !== -1 && typeof remT === 'function') { remT(idx); renderTraitsBody(); }
+        if (idx !== -1 && typeof remT === 'function') remT(idx);
+        renderTourBanner();
     };
-
-    function renderReview() {
-        var name = (byId('heroName') || {}).value || '(unnamed)';
-        var rank = (typeof getRankLabel === 'function' && typeof getRankRawValue === 'function') ? getRankLabel(getRankRawValue()) : (byId('rank') || {}).value;
-        var origin = (byId('origin') || {}).value || '(none)';
-        var occ = (byId('occupation') || {}).value || '(none)';
-        var owned = typeof getPaidPowers === 'function' ? getPaidPowers() : [];
-        var traits = typeof getPaidTraits === 'function' ? getPaidTraits() : [];
-        var statsHtml = STAT_IDS.map(function(id) {
-            var el = byId(id);
-            return '<div class="bp-wiz-summary-row"><span>' + STAT_LABELS[id] + '</span><span>' + ((el && el.value) || 0) + '</span></div>';
-        }).join('');
-        byId('bpWizCard').innerHTML =
-            '<div class="bp-wiz-title">Ready to Finish?</div>' +
-            '<div class="bp-wiz-sub">Here\'s what you\'ve built. Tap Finish to save — you can keep customizing ' +
-            'anything (background, appearance, equipment, more powers) on the full sheet afterward.</div>' +
-            '<div class="bp-wiz-summary-row"><span>Hero Name</span><span>' + name + '</span></div>' +
-            '<div class="bp-wiz-summary-row"><span>Rank</span><span>' + rank + '</span></div>' +
-            '<div class="bp-wiz-summary-row"><span>Origin</span><span>' + origin + '</span></div>' +
-            '<div class="bp-wiz-summary-row"><span>Occupation</span><span>' + occ + '</span></div>' +
-            statsHtml +
-            '<div class="bp-wiz-summary-row"><span>Powers</span><span>' + (owned.length ? owned.join(', ') : '—') + '</span></div>' +
-            '<div class="bp-wiz-summary-row"><span>Traits</span><span>' + (traits.length ? traits.join(', ') : '—') + '</span></div>';
-    }
-
-    var RENDER = {
-        welcome: renderWelcome, identity: renderIdentity, rank: renderRank, origin: renderOrigin,
-        occupation: renderOccupation, stats: renderStats, powers: renderPowers, traits: renderTraits, review: renderReview
-    };
-
-    function renderStep() {
-        restoreStash();
-        var name = STEPS[wiz.step];
-        byId('bpWizProgressLabel').textContent = 'Step ' + (wiz.step + 1) + ' of ' + STEPS.length + ' — ' + STEP_TITLES[name];
-        byId('bpWizProgressFill').style.width = Math.round((wiz.step / (STEPS.length - 1)) * 100) + '%';
-        byId('bpWizBackBtn').style.visibility = wiz.step === 0 ? 'hidden' : 'visible';
-        byId('bpWizNextBtn').textContent = wiz.step === STEPS.length - 1 ? '✅ Finish' : 'Next →';
-        RENDER[name]();
-        ensureOverlay().scrollTop = 0;
-    }
 
     window._bpWizNext = function() {
-        if (wiz.step === STEPS.length - 1) {
+        if (wiz.step === STOPS.length - 1) {
             var hn = byId('heroName');
             if (hn && !hn.value.trim()) {
                 if (typeof showAlert === 'function') showAlert('Give your hero a name first — you can go back to the Name step.', 'Name Needed', '✏️');
                 return;
             }
-            restoreStash();
-            byId('bpWizOverlay').style.display = 'none';
+            endTour();
             if (typeof window.completeHeroCreation === 'function') window.completeHeroCreation();
             return;
         }
         wiz.step++;
-        renderStep();
+        tourGo();
     };
     window._bpWizBack = function() {
         if (wiz.step === 0) return;
         wiz.step--;
-        renderStep();
+        tourGo();
     };
     window._bpWizSkip = function() {
-        restoreStash();
-        var ov = byId('bpWizOverlay');
-        if (ov) ov.style.display = 'none';
+        endTour();
         if (typeof window.appNavTo === 'function') window.appNavTo('bio');
     };
-    window._bpWizSetConcept = function(k) { wiz.concept = k; renderStep(); };
 
-    // Entry point — takes over the existing "Guided Mode" CTA and mode-picker
-    // option, replacing the old single coach-panel with the full step wizard.
+    /* ---------- entry ---------- */
     window._bpWizardOpen = function() {
         function start() {
             if (typeof window._bpBeginHeroCreation === 'function') window._bpBeginHeroCreation(false);
             if (typeof window.bpSetGuidedMode === 'function') window.bpSetGuidedMode(true);
-            wiz.step = 0; wiz.concept = null; wiz.stash = [];
-            ensureOverlay().style.display = 'flex';
-            renderStep();
+            wiz.step = 0; wiz.concept = null;
+            tourGo();
         }
         var nameEl = byId('heroName');
         var hasData = nameEl && nameEl.value && nameEl.value.trim().length > 0;
@@ -32126,6 +32117,7 @@ window.bpVaultPickChoose = function(heroIndex) {
     window._bpBeginGuidedHeroCreation = window._bpWizardOpen;
 
 })();
+
 </script>
 
 <!-- Headquarters screen render hook. This app redefines both init() and appNavTo()
