@@ -9331,7 +9331,8 @@ function getEffectiveDefense(stat, score) {
     const cm = _getCustomStatMods();
     const customScore = cm.filter(m => m.type === 'score'   && m.stat === stat).reduce((s,m) => s+m.bonus, 0);
     const customDef   = cm.filter(m => m.type === 'defense' && m.stat === stat).reduce((s,m) => s+m.bonus, 0);
-    return base + powerFlat + traitFlat + customScore + customDef;
+    const sizeDef = (window._bullpenSizeFx && window._bullpenSizeFx.def) || 0;
+    return base + powerFlat + traitFlat + customScore + customDef + sizeDef;
 }
 
 
@@ -9610,6 +9611,7 @@ function updateSpeed() {
     const SIZE_FX = SIZE_FX_TABLE;
     const sizeFx = SIZE_FX[sizeVal] || SIZE_FX.Average;
     window._bullpenSizeFx = sizeFx;
+    try{ if(typeof renderSizeReference==='function') renderSizeReference(); }catch(e){}
     let traitRun = 0;
     if (sizeVal === "Average" || !sizeVal) { if (hasBig) traitRun += 1; if (hasSmall) traitRun -= 1; }
 
@@ -18287,7 +18289,8 @@ async function exportCharacterPDF(layout='standard') {
                 .reduce((sum, b) => sum + b.bonus, 0);
             const customScore = _pdfCM.filter(m=>m.type==='score'  &&m.stat===stat).reduce((s,m)=>s+m.bonus,0);
             const customDef   = _pdfCM.filter(m=>m.type==='defense'&&m.stat===stat).reduce((s,m)=>s+m.bonus,0);
-            return score + 10 + powerFlat + traitFlat + customScore + customDef;
+            const sizeDef = (typeof SIZE_FX_TABLE!=='undefined') ? (((SIZE_FX_TABLE[hero.size||'Average']||{}).def)||0) : 0;
+            return score + 10 + powerFlat + traitFlat + customScore + customDef + sizeDef;
         }
         const pdfResolvedDef = {
             melee:      pdfEffDef("melee",      parseInt(stats.melee||0)),
@@ -23684,7 +23687,7 @@ body.bp2-play-mode #bp2ControlCenter { box-shadow:0 0 22px var(--primary-glow); 
             const colW=(W-PAD*2-GAP)/2;
             let yL=section('Defenses / OOC', PAD, y, colW);
             let yR=section('Traits & Tags', PAD+colW+GAP, y, colW);
-            function defense(stat){ return (parseInt(stats[stat])||0) + 10; }
+            function defense(stat){ const _sd=(typeof SIZE_FX_TABLE!=='undefined')?(((SIZE_FX_TABLE[hero.size||'Average']||{}).def)||0):0; return (parseInt(stats[stat])||0) + 10 + _sd; }
             statDefs.forEach(([lab,id])=>{
                 fill(T.panel); rect(PAD,yL,colW,20,2);
                 font('bold',7); txt(T.sub); doc.text(lab, PAD+7, yL+13);
@@ -28383,7 +28386,7 @@ if(document.readyState === 'loading') {
   window._refreshEdgeReminder=function(){const el=document.getElementById('edgeTroubleReminder');const sel=document.getElementById('rollEdgeSelect');if(!el||!sel)return;const v=parseInt(sel.value)||0;let msg='<strong style="color:var(--accent-gold);">Edge / Trouble:</strong> ';if(v===0)msg+='Normal roll. Edges and Troubles cancel 1-for-1 before you roll.';else if(v===1)msg+='⚡ Edge — reroll the lowest die.';else if(v===2)msg+='⚡⚡ Double Edge — stronger favorable reroll.';else if(v===-1)msg+='⚠ Trouble — reroll the highest die.';else if(v===-2)msg+='⚠⚠ Double Trouble — stronger unfavorable reroll.';el.innerHTML=msg;};
 
   window.renderChallengeHelper=function(){const body=document.getElementById('challengeHelperBody');if(!body)return;const rank=parseInt((document.getElementById('challengeRankSelect')||{}).value)||3;const base=8+rank*2;const rows=[{label:'Easy',tn:Math.max(8,base-4)},{label:'Standard',tn:base},{label:'Hard',tn:base+3},{label:'Formidable',tn:base+6},{label:'vs Avg Def',tn:10+rank},{label:'vs Tough Def',tn:12+rank*2}];body.innerHTML=rows.map(r=>`<div style="background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;"><div style="font-size:0.65em;text-transform:uppercase;color:var(--text-label);">${r.label}</div><div style="font-size:1.6em;font-weight:bold;color:var(--accent-gold);margin:4px 0;">TN ${r.tn}</div><button type="button" onclick="(function(){var i=document.getElementById('rollTNInput');var s=document.getElementById('rollDefenseSelect');if(s){s.value='custom';if(typeof syncRollDefense==='function')syncRollDefense();}if(i){i.style.display='';i.value='${r.tn}';}})()" style="width:auto;margin-top:6px;padding:4px 8px;font-size:0.68em;">Use on Roller</button></div>`).join('');};
-  window.renderSizeReference=function(){const body=document.getElementById('sizeReferenceBody');if(!body||typeof SIZE_FX_TABLE==='undefined')return;const order=['Microscopic','Miniature','Tiny','Little','Small','Average','Big','Huge','Gigantic','Titanic','Gargantuan'];body.innerHTML=order.map(name=>{const fx=SIZE_FX_TABLE[name];const isAvg=name==='Average';return `<div style="background:var(--bg-inset);border:1px solid ${isAvg?'var(--accent-gold)':'var(--border)'};border-radius:8px;padding:8px;text-align:center;"><div style="font-size:0.68em;font-weight:bold;color:${isAvg?'var(--accent-gold)':'var(--text-main)'};">${name}</div><div style="font-size:0.68em;color:var(--text-sub);margin-top:4px;">Speed ${fx.run>=0?'+':''}${fx.run}</div><div style="font-size:0.68em;color:var(--text-sub);">Reach ${fx.reach}</div><div style="font-size:0.68em;color:var(--text-sub);">Def ${fx.def>=0?'+':''}${fx.def}</div></div>`;}).join('');};
+  window.renderSizeReference=function(){const body=document.getElementById('sizeReferenceBody');if(!body||typeof SIZE_FX_TABLE==='undefined')return;const sel=(document.getElementById('size')||{}).value||'Average';const order=['Microscopic','Miniature','Tiny','Little','Small','Average','Big','Huge','Gigantic','Titanic','Gargantuan'];body.innerHTML=order.map(name=>{const fx=SIZE_FX_TABLE[name];const isSel=name===sel;return `<div style="background:var(--bg-inset);border:1px solid ${isSel?'var(--accent-gold)':'var(--border)'};border-radius:8px;padding:8px;text-align:center;"><div style="font-size:0.68em;font-weight:bold;color:${isSel?'var(--accent-gold)':'var(--text-main)'};">${name}</div><div style="font-size:0.68em;color:var(--text-sub);margin-top:4px;">Speed ${fx.run>=0?'+':''}${fx.run}</div><div style="font-size:0.68em;color:var(--text-sub);">Reach ${fx.reach}</div><div style="font-size:0.68em;color:var(--text-sub);">Def ${fx.def>=0?'+':''}${fx.def}</div></div>`;}).join('');};
 
   window.charNarrativeItems=window.charNarrativeItems||[];
   function escNi(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
