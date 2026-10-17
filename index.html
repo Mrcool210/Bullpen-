@@ -17968,6 +17968,21 @@ function _pdfImageFormat(dataUrl) {
 // stretching the source to exactly fit w×h, which distorts non-matching
 // aspect ratios. Falls back to a plain stretch if the ratio is unknown or
 // this jsPDF build doesn't support clipping.
+function _pdfFitRect(ratio, x, y, w, h) {
+    // Contain: largest rect of aspect `ratio` that fits inside (x,y,w,h), centered.
+    if (!ratio || !isFinite(ratio) || ratio <= 0) return {x:x, y:y, w:w, h:h};
+    const boxRatio = w / h;
+    let dw, dh;
+    if (ratio > boxRatio) { dw = w; dh = w / ratio; }
+    else { dh = h; dw = h * ratio; }
+    return {x: x + (w - dw) / 2, y: y + (h - dh) / 2, w: dw, h: dh};
+}
+function _pdfDrawFitImage(doc, dataUrl, ratio, x, y, w, h) {
+    const r = _pdfFitRect(ratio, x, y, w, h);
+    const fmt = _pdfImageFormat(dataUrl);
+    try { doc.addImage(dataUrl, fmt, r.x, r.y, r.w, r.h, '', 'FAST'); } catch(e) {}
+    return r;
+}
 function _pdfDrawCoverImage(doc, dataUrl, ratio, x, y, w, h) {
     const fmt = _pdfImageFormat(dataUrl);
     if (!ratio || !isFinite(ratio) || ratio <= 0) {
@@ -18858,7 +18873,9 @@ async function exportCharacterPDF(layout='standard') {
             });
         }
 
-        // Showcase layout: large portrait beneath tags in right column
+        // Showcase layout: large portrait beneath tags in right column.
+        // The photo is FIT (contain) so the whole image always shows, centered
+        // in the frame — no cropping. The name bar hugs the fitted photo.
         if(layout === 'showcase' && hero.portrait) {
             const portraitAvail = CONTENT_BOTTOM - yR - 4;
             if(portraitAvail > 40) {
@@ -18867,9 +18884,9 @@ async function exportCharacterPDF(layout='standard') {
                 // stretching down the page whenever the Tags list happens to be short.
                 const ph = Math.min(portraitAvail, pw * 1.2, 240);
                 fill(T.panel); rect(rightX, yR, pw, ph, 3);
-                let imgOk = false;
+                let imgOk = false, fitR = null;
                 try {
-                    _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph);
+                    fitR = _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph);
                     imgOk = true;
                 } catch(e) { imgOk = false; }
                 if(!imgOk) {
@@ -18880,13 +18897,14 @@ async function exportCharacterPDF(layout='standard') {
                 doc.setDrawColor(T.gold[0], T.gold[1], T.gold[2]);
                 doc.setLineWidth(1.5);
                 doc.roundedRect(rightX, yR, pw, ph, 3, 3);
-                // name overlay at bottom of portrait
+                // name overlay at bottom of the fitted photo (not the frame)
+                const nb = fitR || {x: rightX, y: yR, w: pw, h: ph};
                 fill([0,0,0]);
                 doc.setGState && doc.setGState(new doc.GState({opacity:0.55}));
-                rect(rightX, yR + ph - 22, pw, 22, 0);
+                rect(nb.x, nb.y + nb.h - 22, nb.w, 22, 0);
                 doc.setGState && doc.setGState(new doc.GState({opacity:1}));
                 boldIt(14); txtCol(T.gold);
-                doc.text((hero.heroName||'').toUpperCase(), rightX + pw/2, yR + ph - 8, {align:'center'});
+                doc.text((hero.heroName||'').toUpperCase(), nb.x + nb.w/2, nb.y + nb.h - 8, {align:'center'});
             }
         }
 
@@ -31724,23 +31742,7 @@ window.bpVaultPickChoose = function(heroIndex) {
     function byId(id) { return document.getElementById(id); }
     var STAT_IDS = ['melee', 'agility', 'resilience', 'vigilance', 'ego', 'logic'];
 
-    // Suggestions keyed to the six real M.A.R.V.E.L. abilities (not an invented
-    // archetype system) — "which ability do you want your hero built around"
-    // is a real axis in this game. Origin/Occupation/power names below are all
-    // real catalog entries (originsData / occupationsData) — chosen only to
-    // bias what's shown first, never to change any rule.
-    var CONCEPTS = {
-        melee:      { label: '👊 Melee (close combat)',        origins: ['Mutant', 'Animal', 'Monstrous'],            occs: ['Adventurer', 'Military', 'Criminal'],     powers: ['Mighty 1', 'Sturdy 1', 'Brawling'] },
-        agility:    { label: '💨 Agility (fast / ranged)',      origins: ['Mutant', 'High Tech', 'Special Training'], occs: ['Adventurer', 'Spy', 'Entertainer'],       powers: ['Speed Run 1', 'Evasion', 'Jump 1'] },
-        resilience: { label: '🛡 Resilience (tough)',           origins: ['Mutant', 'Alien', 'Eternal'],               occs: ['Military', 'Law Enforcer', 'Adventurer'], powers: ['Sturdy 1', 'Mighty 1', 'Environmental Protection'] },
-        vigilance:  { label: '👁 Vigilance (perceptive)',       origins: ['Special Training', 'High Tech', 'Inhuman'], occs: ['Investigator', 'Spy', 'Law Enforcer'],   powers: ['Heightened Senses 1', 'Evasion'] },
-        ego:        { label: '✨ Ego (willpower / magic)',      origins: ['Magic', 'Magic: Sorcery', 'Mythic'],        occs: ['Educator', 'Investigator', 'Outsider'],   powers: [] },
-        logic:      { label: '🧠 Logic (smart / tech)',         origins: ['High Tech', 'High Tech: Battle Suit', 'Weird Science'], occs: ['Engineer', 'Scientist', 'Tycoon'], powers: [] }
-    };
-    var DEFAULT_ORIGINS = ['Mutant', 'High Tech', 'Special Training', 'Magic', 'Alien', 'Animal'];
-    var DEFAULT_OCCS = ['Adventurer', 'Investigator', 'Scientist', 'Military', 'Spy', 'Engineer'];
-
-    var wiz = { step: 0, concept: null };
+    var wiz = { step: 0 };
 
     /* ---------- inline tour chrome: banner + highlight (no overlays) ---------- */
     function ensureTourCSS() {
@@ -31748,18 +31750,20 @@ window.bpVaultPickChoose = function(heroIndex) {
         var st = document.createElement('style');
         st.id = 'bpTourCSS';
         st.textContent =
-            '.bp-tour-banner{margin:12px;padding:12px 14px;border:2px solid var(--primary,#2f81f7);' +
+            '.bp-tour-banner{margin:10px;padding:10px 12px;border:2px solid var(--primary,#2f81f7);' +
             'border-radius:12px;background:var(--card-bg,#16202e);}' +
             '.bp-tour-head{display:flex;justify-content:space-between;align-items:center;gap:8px;' +
-            'font-size:.78em;color:var(--text-label,#9fb0c3);margin-bottom:6px;}' +
-            '.bp-tour-head button{background:none;border:none;color:var(--text-label,#9fb0c3);font-size:1em;}' +
-            '.bp-tour-bar{height:6px;border-radius:3px;background:var(--border-light,#2a3a4d);margin-bottom:10px;}' +
-            '.bp-tour-fill{height:100%;border-radius:3px;background:var(--primary,#2f81f7);transition:width .25s;}' +
-            '.bp-tour-title{font-size:1.05em;font-weight:700;margin-bottom:4px;}' +
-            '.bp-tour-text{font-size:.86em;line-height:1.45;margin-bottom:8px;}' +
-            '.bp-tour-extras{margin-bottom:8px;}' +
+            'margin-bottom:5px;}' +
+            '.bp-tour-step{font-size:.7em;letter-spacing:.08em;color:var(--text-label,#9fb0c3);white-space:nowrap;}' +
+            '.bp-tour-head button{background:none;border:none;color:var(--text-label,#9fb0c3);' +
+            'font-size:1.1em;line-height:1;padding:2px 4px;}' +
+            '.bp-tour-bar{height:4px;border-radius:2px;background:var(--border-light,#2a3a4d);margin-bottom:8px;}' +
+            '.bp-tour-fill{height:100%;border-radius:2px;background:var(--primary,#2f81f7);transition:width .25s;}' +
+            '.bp-tour-title{font-size:.95em;font-weight:700;margin-bottom:2px;}' +
+            '.bp-tour-text{font-size:.82em;line-height:1.4;margin-bottom:6px;}' +
+            '.bp-tour-extras{margin-bottom:6px;}' +
             '.bp-tour-nav{display:flex;gap:8px;}' +
-            '.bp-tour-nav button{flex:1;min-height:42px;border-radius:8px;font-size:.85em;cursor:pointer;}' +
+            '.bp-tour-nav button{flex:1;min-height:40px;border-radius:8px;font-size:.85em;cursor:pointer;}' +
             '.bp-tour-nav button.bp-tour-primary{background:var(--primary,#2f81f7);color:#fff;border:none;font-weight:700;}' +
             '.bp-tour-highlight{outline:3px solid var(--primary,#2f81f7) !important;outline-offset:3px;border-radius:8px;}';
         document.head.appendChild(st);
@@ -31790,52 +31794,12 @@ window.bpVaultPickChoose = function(heroIndex) {
         return null;
     }
 
-    /* ---------- recommendations (same logic as before) ---------- */
-    function currentConcept() { return wiz.concept ? CONCEPTS[wiz.concept] : null; }
-
-    function chip(label, active, added, onclick) {
-        var cls = 'bp-wiz-chip' + (active ? ' bp-wiz-chip-active' : '') + (added ? ' bp-wiz-chip-added' : '');
-        return '<button type="button" class="' + cls + '" onclick="' + onclick + '">' + label + (added ? ' ✓' : '') + '</button>';
-    }
-
-    function powerRecommendations() {
-        var c = currentConcept();
-        var origin = (byId('origin') || {}).value || '';
-        var occ = (byId('occupation') || {}).value || '';
-        var od = (window.originsData || {})[origin] || {};
-        var ocd = (window.occupationsData || {})[occ] || {};
-        var out = [];
-        (c ? c.powers : []).forEach(function(p) { if (out.indexOf(p) === -1) out.push(p); });
-        (od.powers || []).forEach(function(p) { if (out.indexOf(p) === -1) out.push(p); });
-        (ocd.powers || []).forEach(function(p) { if (out.indexOf(p) === -1) out.push(p); });
-        if (!out.length) {
-            // Most origins grant no powers and concept is optional — never
-            // leave the wizard's powers step with zero options to pick from.
-            out = ['Mighty 1', 'Sturdy 1', 'Brawling', 'Evasion', 'Fast Strikes',
-                   'Heightened Senses 1', 'Jump 1', 'Healing Factor',
-                   'Combat Trickery', 'Wisecracker'];
-        }
-        return out.slice(0, 10);
-    }
-
-    function traitRecommendations() {
-        var origin = (byId('origin') || {}).value || '';
-        var occ = (byId('occupation') || {}).value || '';
-        var od = (window.originsData || {})[origin] || {};
-        var ocd = (window.occupationsData || {})[occ] || {};
-        var out = [];
-        (od.traits || []).forEach(function(t) { if (out.indexOf(t) === -1) out.push(t); });
-        (ocd.traits || []).forEach(function(t) { if (out.indexOf(t) === -1) out.push(t); });
-        return out.slice(0, 10);
-    }
-
     /* ---------- tour stops: Bio → Stats → Powers, on the real pages ---------- */
     var STOPS = [
         { id: 'welcome', screen: 'bio', title: 'Build your hero — guided tour',
           text: 'We\'ll walk through the real pages together: Bio, Stats, then Powers & Traits. ' +
-                'Everything you tap is the actual sheet, so there\'s nothing to re-learn later. ' +
-                'Pick a focus below if you want suggestions tailored to it (optional).',
-          target: null, extras: 'concept' },
+                'Everything you tap is the actual sheet, so there\'s nothing to re-learn later.',
+          target: null },
         { id: 'identity', screen: 'bio', title: 'Name your hero',
           text: 'Start at the top of the Bio page: give your hero a name (and a secret identity, if they have one).',
           target: function() { return byId('heroName'); } },
@@ -31844,137 +31808,49 @@ window.bpVaultPickChoose = function(heroIndex) {
                 'established names sit at Rank 4–5. You can raise it later.',
           target: function() { return byId('rank'); } },
         { id: 'origin', screen: 'bio', title: 'Choose an origin',
-          text: 'Origin is how your hero got their powers. It grants a free package of traits and tags — ' +
-                'tap a suggestion below, or pick anything from the highlighted list.',
-          target: function() { return byId('origin'); }, extras: 'origin' },
+          text: 'Origin is how your hero got their powers — pick one from the highlighted list. ' +
+                'It grants a free package of traits and tags.',
+          target: function() { return byId('origin'); } },
         { id: 'occupation', screen: 'bio', title: 'Choose an occupation',
           text: 'What your hero does day-to-day. Like origin, it grants free traits and tags.',
-          target: function() { return byId('occupation'); }, extras: 'occupation' },
+          target: function() { return byId('occupation'); } },
         { id: 'stats', screen: 'stats', title: 'M.A.R.V.E.L. ability scores',
           text: 'Six scores: Melee, Agility, Resilience, Vigilance, Ego, Logic. Higher is better at that kind ' +
-                'of action — put your best scores where your concept needs them. Nothing here is locked in.',
-          target: function() { return document.querySelector('.stat-grid'); }, extras: 'statcount' },
+                'of action — put your best scores where your hero needs them most. Nothing here is locked in.',
+          target: function() { return document.querySelector('.stat-grid'); } },
         { id: 'powers', screen: 'powers', title: 'Pick what makes them super',
-          text: 'Every power costs "slots" from your budget. Start with 2–3 that clearly fit your concept — ' +
-                'you can add more as you rank up. Tap a suggestion to add it; the full list is right below.',
-          target: function() { return findHeading('powers', 'Powers'); }, extras: 'powers' },
+          text: 'Every power costs "slots" from your budget. Start with 2–3 that clearly fit your hero — ' +
+                'you can add more as you rank up. Browse the highlighted Powers list and tap to add.',
+          target: function() { return findHeading('powers', 'Powers'); } },
         { id: 'traits', screen: 'powers', title: 'Traits',
           text: 'Traits are smaller narrative abilities and don\'t cost power slots. Some are already granted ' +
                 'free by your Origin/Occupation and show up automatically.',
-          target: function() { return findHeading('powers', 'Traits'); }, extras: 'traits' },
+          target: function() { return findHeading('powers', 'Traits'); } },
         { id: 'review', screen: 'powers', title: 'Ready to finish?',
           text: 'Here\'s what you\'ve built. Finish the tour to keep customizing on the full sheet — ' +
                 'appearance, equipment, and more powers are all there whenever you want them.',
           target: null, extras: 'review' }
     ];
-    var STEP_TITLES = {
-        welcome: 'Welcome', identity: 'Name Your Hero', rank: 'Choose a Rank', origin: 'Choose an Origin',
-        occupation: 'Choose an Occupation', stats: 'Ability Scores', powers: 'Powers', traits: 'Traits', review: 'Review & Finish'
-    };
-
-    function escQuote(s) { return String(s).replace(/'/g, "\\'"); }
 
     function stopExtrasHTML(which) {
-        if (!which) return '';
-        if (which === 'concept') {
-            return '<div class="bp-wiz-chip-label">Which ability is your hero built around? (optional)</div>' +
-                '<div class="bp-wiz-chip-row">' +
-                Object.keys(CONCEPTS).map(function(k) {
-                    return chip(CONCEPTS[k].label, wiz.concept === k, false, "_bpWizSetConcept('" + k + "')");
-                }).join('') + '</div>';
-        }
-        if (which === 'origin' || which === 'occupation') {
-            var c = currentConcept();
-            var isOrigin = which === 'origin';
-            var list = c ? (isOrigin ? c.origins : c.occs) : (isOrigin ? DEFAULT_ORIGINS : DEFAULT_OCCS);
-            var cur = (byId(isOrigin ? 'origin' : 'occupation') || {}).value || '';
-            var fn = isOrigin ? '_bpWizPickOrigin' : '_bpWizPickOcc';
-            return '<div class="bp-wiz-chip-label">' + (c ? 'Suggested' : 'Popular for new players') + ' — tap to select</div>' +
-                '<div class="bp-wiz-chip-row">' +
-                list.map(function(o) { return chip(o, cur === o, false, fn + "('" + escQuote(o) + "')"); }).join('') + '</div>';
-        }
-        if (which === 'statcount') {
-            return '<div class="bp-wiz-counter" id="bpTourStatTotal">—</div>';
-        }
-        if (which === 'powers') {
-            if (typeof recalcSlots === 'function') recalcSlots();
-            var rank = (typeof getRankNumber === 'function' && typeof getRankRawValue === 'function') ? getRankNumber(getRankRawValue()) : 1;
-            var max = typeof getMaxSlots === 'function' ? getMaxSlots(rank) : rank * 4;
-            var used = typeof window.currentSlots === 'number' ? window.currentSlots : 0;
-            var owned = typeof getPaidPowers === 'function' ? getPaidPowers() : [];
-            var recs = powerRecommendations();
-            var h = '<div class="bp-wiz-counter">Power Picks: <span>' + used + ' / ' + max + '</span></div>';
-            if (recs.length) {
-                h += '<div class="bp-wiz-chip-label">Recommended for your build — tap to add</div>' +
-                    '<div class="bp-wiz-chip-row">' +
-                    recs.map(function(p) {
-                        var added = owned.indexOf(p) !== -1;
-                        return chip(p, false, added, added ? 'void(0)' : "_bpWizAddPower('" + escQuote(p) + "')");
-                    }).join('') + '</div>';
-            }
-            if (owned.length) {
-                h += '<div class="bp-wiz-chip-label">Your powers</div><div class="bp-wiz-list">' +
-                    owned.map(function(p) {
-                        return '<div class="bp-wiz-list-item"><span>' + p + '</span><button type="button" onclick="_bpWizRemovePower(\'' + escQuote(p) + '\')">✕</button></div>';
-                    }).join('') + '</div>';
-            }
-            return h;
-        }
-        if (which === 'traits') {
-            var recs2 = traitRecommendations();
-            var ownedT = typeof getPaidTraits === 'function' ? getPaidTraits() : [];
-            var h2 = '';
-            if (recs2.length) {
-                h2 += '<div class="bp-wiz-chip-label">Suggested — tap to add</div><div class="bp-wiz-chip-row">' +
-                    recs2.map(function(t) {
-                        var added = ownedT.indexOf(t) !== -1;
-                        return chip(t, false, added, added ? 'void(0)' : "_bpWizAddTrait('" + escQuote(t) + "')");
-                    }).join('') + '</div>';
-            }
-            if (ownedT.length) {
-                h2 += '<div class="bp-wiz-chip-label">Your traits</div><div class="bp-wiz-list">' +
-                    ownedT.map(function(t) {
-                        return '<div class="bp-wiz-list-item"><span>' + t + '</span><button type="button" onclick="_bpWizRemoveTrait(\'' + escQuote(t) + '\')">✕</button></div>';
-                    }).join('') + '</div>';
-            }
-            return h2;
-        }
-        if (which === 'review') {
-            var name = (byId('heroName') || {}).value || '(unnamed)';
-            var rrank = (typeof getRankLabel === 'function' && typeof getRankRawValue === 'function') ? getRankLabel(getRankRawValue()) : (byId('rank') || {}).value;
-            var rorigin = (byId('origin') || {}).value || '(none)';
-            var rocc = (byId('occupation') || {}).value || '(none)';
-            var rpowers = typeof getPaidPowers === 'function' ? getPaidPowers() : [];
-            var rtraits = typeof getPaidTraits === 'function' ? getPaidTraits() : [];
-            var statsHtml = STAT_IDS.map(function(id) {
-                var el = byId(id);
-                return '<div class="bp-wiz-summary-row"><span>' + id.charAt(0).toUpperCase() + id.slice(1) + '</span><span>' + ((el && el.value) || 0) + '</span></div>';
-            }).join('');
-            return '<div class="bp-wiz-summary-row"><span>Hero</span><span>' + name + '</span></div>' +
-                '<div class="bp-wiz-summary-row"><span>Rank</span><span>' + rrank + '</span></div>' +
-                '<div class="bp-wiz-summary-row"><span>Origin</span><span>' + rorigin + '</span></div>' +
-                '<div class="bp-wiz-summary-row"><span>Occupation</span><span>' + rocc + '</span></div>' +
-                statsHtml +
-                '<div class="bp-wiz-summary-row"><span>Powers</span><span>' + (rpowers.length ? rpowers.join(', ') : '—') + '</span></div>' +
-                '<div class="bp-wiz-summary-row"><span>Traits</span><span>' + (rtraits.length ? rtraits.join(', ') : '—') + '</span></div>';
-        }
-        return '';
-    }
-
-    function bindStatCounter() {
-        function update() {
-            var el = byId('bpTourStatTotal');
-            if (!el) return;
-            var total = 0;
-            STAT_IDS.forEach(function(id) { var e = byId(id); total += parseInt((e && e.value) || 0, 10) || 0; });
-            var rank = (typeof getRankNumber === 'function' && typeof getRankRawValue === 'function') ? getRankNumber(getRankRawValue()) : 1;
-            el.innerHTML = '<span>' + total + '</span> / ~' + (rank * 5) + ' points assigned (guideline, not a hard cap)';
-        }
-        STAT_IDS.forEach(function(id) {
-            var e2 = byId(id);
-            if (e2 && !e2._bpTourBound) { e2.addEventListener('change', update); e2._bpTourBound = true; }
-        });
-        update();
+        if (which !== 'review') return '';
+        var name = (byId('heroName') || {}).value || '(unnamed)';
+        var rrank = (typeof getRankLabel === 'function' && typeof getRankRawValue === 'function') ? getRankLabel(getRankRawValue()) : ((byId('rank') || {}).value || '');
+        var rorigin = (byId('origin') || {}).value || '(none)';
+        var rocc = (byId('occupation') || {}).value || '(none)';
+        var rpowers = typeof getPaidPowers === 'function' ? getPaidPowers() : [];
+        var rtraits = typeof getPaidTraits === 'function' ? getPaidTraits() : [];
+        var statsHtml = STAT_IDS.map(function(id) {
+            var el = byId(id);
+            return '<div class="bp-wiz-summary-row"><span>' + id.charAt(0).toUpperCase() + id.slice(1) + '</span><span>' + ((el && el.value) || 0) + '</span></div>';
+        }).join('');
+        return '<div class="bp-wiz-summary-row"><span>Hero</span><span>' + name + '</span></div>' +
+            '<div class="bp-wiz-summary-row"><span>Rank</span><span>' + rrank + '</span></div>' +
+            '<div class="bp-wiz-summary-row"><span>Origin</span><span>' + rorigin + '</span></div>' +
+            '<div class="bp-wiz-summary-row"><span>Occupation</span><span>' + rocc + '</span></div>' +
+            statsHtml +
+            '<div class="bp-wiz-summary-row"><span>Powers</span><span>' + (rpowers.length ? rpowers.join(', ') : '—') + '</span></div>' +
+            '<div class="bp-wiz-summary-row"><span>Traits</span><span>' + (rtraits.length ? rtraits.join(', ') : '—') + '</span></div>';
     }
 
     function renderTourBanner() {
@@ -31982,10 +31858,9 @@ window.bpVaultPickChoose = function(heroIndex) {
         if (!banner) return;
         var stop = STOPS[wiz.step];
         var n = STOPS.length;
-        var label = 'Step ' + (wiz.step + 1) + ' of ' + n + ' — ' + (STEP_TITLES[stop.id] || stop.title);
         banner.innerHTML =
-            '<div class="bp-tour-head"><span>' + label + '</span>' +
-            '<button type="button" onclick="_bpWizSkip()" title="Exit tour">Exit tour ✕</button></div>' +
+            '<div class="bp-tour-head"><span class="bp-tour-step">STEP ' + (wiz.step + 1) + ' OF ' + n + '</span>' +
+            '<button type="button" onclick="_bpWizSkip()" title="Exit tour">✕</button></div>' +
             '<div class="bp-tour-bar"><div class="bp-tour-fill" style="width:' +
             Math.round((wiz.step / (n - 1)) * 100) + '%"></div></div>' +
             '<div class="bp-tour-title">' + stop.title + '</div>' +
@@ -31996,7 +31871,6 @@ window.bpVaultPickChoose = function(heroIndex) {
             (wiz.step === 0 ? 'hidden' : 'visible') + '">← Back</button>' +
             '<button type="button" class="bp-tour-primary" onclick="_bpWizNext()">' +
             (wiz.step === n - 1 ? '✅ Finish' : 'Next →') + '</button></div>';
-        if (stop.extras === 'statcount') bindStatCounter();
     }
 
     function tourGo() {
@@ -32027,49 +31901,6 @@ window.bpVaultPickChoose = function(heroIndex) {
             if (screen) { try { screen.scrollTop = 0; } catch (e2) {} }
         }
     }
-
-    /* ---------- tour actions (drive the real sheet functions) ---------- */
-    window._bpWizSetConcept = function(k) { wiz.concept = k; renderTourBanner(); };
-    window._bpWizPickOrigin = function(name) {
-        var o = byId('origin');
-        if (!o) return;
-        o.value = name;
-        if (typeof applyOrigin === 'function') applyOrigin();
-        renderTourBanner();
-    };
-    window._bpWizPickOcc = function(name) {
-        var o = byId('occupation');
-        if (!o) return;
-        o.value = name;
-        if (typeof applyOccupation === 'function') applyOccupation();
-        renderTourBanner();
-    };
-    window._bpWizAddPower = function(name) {
-        if (typeof addPowerWithChecks === 'function') addPowerWithChecks(name);
-        setTimeout(renderTourBanner, 60);
-        setTimeout(renderTourBanner, 450);
-    };
-    window._bpWizRemovePower = function(name) {
-        if (typeof removeManualPower === 'function') removeManualPower(name);
-        renderTourBanner();
-    };
-    window._bpWizAddTrait = function(name) {
-        var sel = byId('tSelect');
-        if (!sel) return;
-        sel.value = name;
-        if (sel.value !== name) {
-            if (typeof showNotice === 'function') showNotice('Add "' + name + '" from the Traits section below.');
-            return;
-        }
-        if (typeof manualAdd === 'function') manualAdd('trait');
-        renderTourBanner();
-    };
-    window._bpWizRemoveTrait = function(name) {
-        var arr = window.charT || [];
-        var idx = arr.indexOf(name);
-        if (idx !== -1 && typeof remT === 'function') remT(idx);
-        renderTourBanner();
-    };
 
     window._bpWizNext = function() {
         if (wiz.step === STOPS.length - 1) {
