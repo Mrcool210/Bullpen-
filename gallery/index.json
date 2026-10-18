@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-14T11:20:35.740Z",
+  "updatedAt": "2026-10-18T17:34:57.055Z",
   "characters": [
     {
       "id": "echo-mara-voss",
@@ -93,6 +93,18 @@
       "submittedAt": "2026-10-14T11:20:35.740Z",
       "sourceIssue": 6,
       "file": "chars/spider-man-earth-1048-mv80qnq4.json"
+    },
+    {
+      "id": "unnamed-hero-mve3vhnj",
+      "name": "Unnamed Hero",
+      "author": "anonymous",
+      "rank": 1,
+      "tagline": "A new hero for the vault.",
+      "description": "No description provided.",
+      "powers": [],
+      "submittedAt": "2026-10-18T17:34:57.055Z",
+      "sourceIssue": 8,
+      "file": "chars/unnamed-hero-mve3vhnj.json"
     }
   ]
 }
