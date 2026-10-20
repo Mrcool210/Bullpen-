@@ -9238,6 +9238,73 @@ function iiGetCarriedItemPowers() {
         return d ? [...(d.powers||[]), ...(d.itemPowers||[])] : [];
     }))];
 }
+// ── Iconic weapon damage-multiplier bonuses ────────────────────────────────
+// Book rule (Avengers Expansion p.108, item power "Weapon"): a weapon's entry
+// declares its damage multiplier bonus per attack stat — "Melee Damage ×+1";
+// two values separated by a slash are Melee first, Agility second. Published
+// profiles write the same bonus into the Iconic Weapon power itself, e.g.
+// Wolverine (Core): "Iconic Weapon: Adamantium Claws [+1 damage multiplier]".
+// In this app the declaration lives on the iconic ITEM: either its `dmgMult`
+// field (workshop items) or, for the book presets, the "Weapon: ..." line in
+// its notes. Damage multipliers do NOT stack (official FAQ 2024), so per stat
+// the best single carried weapon wins — never a sum, and a duplicated item
+// name still counts once. A bonus naming no stat applies to both Melee and
+// Agility (the weapon's damage multiplier, whichever attack it makes).
+function _parseIconicDmgText(text) {
+    const out = { melee: 0, agility: 0 };
+    if(!text) return out;
+    const t = String(text);
+    const pair = t.match(/melee\s*\/\s*agility\s+damage\s*[×x]?\s*\+\s*(\d+)(?:\s*\/\s*[×x]?\s*\+?\s*(\d+))?/i);
+    if(pair) {
+        out.melee = parseInt(pair[1]);
+        out.agility = pair[2] !== undefined ? parseInt(pair[2]) : parseInt(pair[1]);
+        return out;
+    }
+    const mm = t.match(/melee\s+damage\s*[×x]?\s*\+\s*(\d+)/i);
+    if(mm) out.melee = parseInt(mm[1]);
+    const am = t.match(/agility\s+damage\s*[×x]?\s*\+\s*(\d+)/i);
+    if(am) out.agility = parseInt(am[1]);
+    if(!mm && !am) {
+        const bm = t.match(/(?:^|[^a-z])damage\s*[×x]?\s*\+\s*(\d+)/i);
+        if(bm) { out.melee = parseInt(bm[1]); out.agility = parseInt(bm[1]); }
+    }
+    return out;
+}
+// The workshop `dmgMult` field is free text (placeholder: "+1 / Melee+Agi").
+// Accept the prose weapon forms too, then the compact field forms.
+function _parseDmgMultField(text) {
+    const prose = _parseIconicDmgText(text);
+    if(prose.melee || prose.agility || !text) return prose;
+    const out = { melee: 0, agility: 0 };
+    const t = String(text);
+    const nums = [...t.matchAll(/(\d+)/g)].map(x => parseInt(x[1]));
+    if(!nums.length) return out;
+    if(nums.length >= 2 && /\d+\s*\/\s*\+?\s*\d+/.test(t)) {
+        // "+1/+2" — book order: Melee first, Agility second.
+        out.melee = nums[0]; out.agility = nums[1];
+        return out;
+    }
+    const hasMel = /melee|\bmel\b/i.test(t), hasAgi = /agility|\bagi\b/i.test(t);
+    if(hasMel && !hasAgi) { out.melee = nums[0]; return out; }
+    if(hasAgi && !hasMel) { out.agility = nums[0]; return out; }
+    out.melee = nums[0]; out.agility = nums[0];
+    return out;
+}
+function _iconicItemDmgBonus(d) {
+    if(!d) return { melee: 0, agility: 0 };
+    const fromField = _parseDmgMultField(d.dmgMult);
+    if(fromField.melee || fromField.agility) return fromField;
+    return _parseIconicDmgText(d.notes);
+}
+function getIconicWeaponDmgBonus(itemNames, itemsData) {
+    const best = { melee: 0, agility: 0 };
+    [...new Set(itemNames || [])].forEach(name => {
+        const b = _iconicItemDmgBonus((itemsData || {})[name]);
+        if(b.melee > best.melee) best.melee = b.melee;
+        if(b.agility > best.agility) best.agility = b.agility;
+    });
+    return best;
+}
 (function() {
     const oldGetBonusPowers = getBonusPowers;
     function wrappedGetBonusPowersForItems() {
@@ -10071,10 +10138,14 @@ function updateDamage() {
     // Rank X characters' default damage multiplier is ×10 per the book (they can push
     // it to infinity at will, but ×10 is the "playing fair with lesser beings" default).
     const rank = isRankXValue(rankRaw) ? 10 : getRankNumber(rankRaw);
+    const iconicDmg = (typeof getIconicWeaponDmgBonus === 'function')
+        ? getIconicWeaponDmgBonus(charIconicItems, iconicItemsData) : { melee: 0, agility: 0 };
     const stats = ["melee", "agility", "ego", "logic"];
     stats.forEach(stat => {
         const abilityScore = parseInt(document.getElementById(stat).value) || 0;
-        const bonus      = getPowerBonus(dmgBoosters[stat] || []);
+        const powerBonus = getPowerBonus(dmgBoosters[stat] || []);
+        const iconicBonus = iconicDmg[stat] || 0;
+        const bonus      = powerBonus + iconicBonus;
         const multiplier = rank + bonus;
         const valEl      = document.getElementById(`dmgval-${stat}`);
         const abilEl     = document.getElementById(`dmgability-${stat}`);
@@ -10083,7 +10154,9 @@ function updateDamage() {
         if(abilEl) abilEl.textContent = abilityScore;
         if(bonusEl) {
             if(bonus > 0) {
-                bonusEl.textContent  = `+${bonus} from powers`;
+                bonusEl.textContent  = iconicBonus > 0
+                    ? (powerBonus > 0 ? `+${bonus} from powers & iconic weapon` : `+${bonus} from iconic weapon`)
+                    : `+${bonus} from powers`;
                 bonusEl.style.display = "block";
             } else {
                 bonusEl.style.display = "none";
@@ -19359,12 +19432,16 @@ async function exportCharacterPDF(layout='standard') {
         ];
         const DMG_ROW_H = (DEF_H - GAP) / 2;   // match defense height exactly
         const dmgCW = (halfW - GAP) / 2;
+        // Iconic weapon damage-multiplier bonus (Avengers p.108 "Weapon";
+        // damage multipliers do not stack — best carried weapon per stat).
+        const pdfIconicDmg = (typeof getIconicWeaponDmgBonus === 'function')
+            ? getIconicWeaponDmgBonus(hero.iconicItems, hero.iconicItemsData) : { melee: 0, agility: 0 };
         dmgStatList.forEach((s,idx) => {
             const col = idx%2, row = Math.floor(idx/2);
             const dx = dmgX + col*(dmgCW+GAP);
             const dy = yDmg + row*(DMG_ROW_H+GAP);
             const base = parseInt((stats||{})[s.id]||0);
-            const mult = rank + getPowerBonus(s.boosters);
+            const mult = rank + getPowerBonus(s.boosters) + (pdfIconicDmg[s.id] || 0);
             fill(T.panel); rect(dx,dy,dmgCW,DMG_ROW_H,2);
             fill(T.accent); rect(dx,dy,4,DMG_ROW_H,0);
             bold(6.5); txtCol(T.sub);  doc.text(s.label.toUpperCase(), dx+8, dy + DMG_ROW_H*0.38);
