@@ -2864,7 +2864,7 @@ button[onclick*="openExportModal"] {
 }
 
 /* ── Bio portrait preview: same aspect as the showcase PDF frame ────── */
-/* Showcase frame = colW (292pt) × min(avail, colW×1.2, 240pt) = 292×240. */
+/* Showcase frame at full height = colW (292pt) × min(colW×1.2, 240pt) = 292×240. */
 #portraitWrap {
     aspect-ratio: 292 / 240;
     min-height: 0 !important;
@@ -3582,6 +3582,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 </div>
 <div class="portrait-wrap" id="portraitWrap" style="display:none;" onclick="document.getElementById('portraitInput').click()">
 <img alt="" id="portraitImg" src="" style="display:none;">
+<canvas id="portraitPreviewCanvas" width="292" height="240" style="display:none; position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:grab;"></canvas>
 <div class="portrait-placeholder" id="portraitPlaceholder">
 <div>🦸</div>
 <p>Click to<br>Upload</p>
@@ -3589,7 +3590,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 </div>
 <input accept="image/*" id="portraitInput" onchange="handlePortraitFile(this)" style="display:none;" type="file">
 <input accept="image/*" capture="environment" id="portraitCameraInput" onchange="handlePortraitFile(this)" style="display:none;" type="file">
-<div style="font-size:0.62em; color:var(--text-label); margin-top:4px; text-align:center;">Preview — matches the showcase PDF sheet</div>
+<div style="font-size:0.62em; color:var(--text-label); margin-top:4px; text-align:center;">Preview — drag to position the portrait</div>
 <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
   <button onclick="document.getElementById('portraitInput').click()" style="flex:1;min-width:80px;font-size:0.7em;padding:7px 4px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;">🖼 Gallery</button>
   <button onclick="document.getElementById('portraitCameraInput').click()" style="flex:1;min-width:80px;font-size:0.7em;padding:7px 4px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;">📷 Camera</button>
@@ -3612,7 +3613,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <span style="font-size:0.66em; color:var(--text-label); width:52px; flex-shrink:0;">Vertical</span>
 <input type="range" id="photoPosYSlider" min="0" max="100" step="1" value="50" oninput="setPhotoPos('y', this.value)" style="flex:1; min-width:0; padding:0;">
 </div>
-<button type="button" id="photoPosCenterBtn" onclick="centerPhotoPos()" style="width:100%; font-size:0.7em; padding:6px 4px; background:var(--bg-inset); border:1px solid var(--border); border-radius:6px;">Center</button>
+<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+<span style="font-size:0.66em; color:var(--text-label); width:52px; flex-shrink:0;">Zoom</span>
+<input type="range" id="photoZoomSlider" min="50" max="200" step="5" value="100" oninput="setPhotoZoom(this.value)" style="flex:1; min-width:0; padding:0;">
+<span id="photoZoomVal" style="font-size:0.66em; color:var(--text-label); width:36px; flex-shrink:0; text-align:right;">100%</span>
+</div>
+<button type="button" id="photoPosCenterBtn" onclick="centerPhotoPos()" style="width:100%; font-size:0.7em; padding:6px 4px; background:var(--bg-inset); border:1px solid var(--border); border-radius:6px;">Center / Reset</button>
 </div>
 </div>
 <!-- Action Photo -->
@@ -8715,24 +8721,32 @@ function cardRender(hero, done) {
         x.save();
         x.beginPath(); x.rect(ax, ay, aw, ah); x.clip();
         if (img) {
-            var ir = img.width / img.height, r = aw / ah, sw, sh, sxx, syy;
-            // Position within the slack: hero.photoPosX/photoPosY percent
-            // (50 = centered, the classic behavior).
+            var ir = img.width / img.height;
+            // Placement via the shared _photoPlaceRect: position within
+            // the slack follows hero.photoPosX/photoPosY percent (50 =
+            // centered, the classic behavior); hero.photoZoom scales the
+            // photo around that placement (100 = no zoom).
             var pfx = _normPhotoPos(hero.photoPosX) / 100, pfy = _normPhotoPos(hero.photoPosY) / 100;
+            var pzf = _normPhotoZoom(hero.photoZoom) / 100;
+            var pr = _photoPlaceRect(ir, ax, ay, aw, ah, hero.photoFit === 'fit' ? 'fit' : 'fill', pfx, pfy, pzf);
             if (hero.photoFit === 'fit') {
                 // Fit: whole image visible, letterboxed over the art-zone
-                // backing color, placed at pos% of the leftover space.
+                // backing color (zoomed past 100% it crops — the art zone
+                // is already clipped above).
                 x.fillStyle = '#141b2c'; x.fillRect(ax, ay, aw, ah);
-                var fw, fh;
-                if (ir > r) { fw = aw; fh = aw / ir; }
-                else { fh = ah; fw = ah * ir; }
-                x.drawImage(img, ax + (aw - fw) * pfx, ay + (ah - fh) * pfy, fw, fh);
+                x.drawImage(img, pr.x, pr.y, pr.w, pr.h);
+            } else if (pr.w >= aw && pr.h >= ah) {
+                // Fill: the placed photo covers the zone — draw just the
+                // visible window of the source (the classic cover crop;
+                // the source window is derived from the placed rect, so
+                // at 100% zoom the arguments are exactly the old ones).
+                var kx = img.width / pr.w, ky = img.height / pr.h;
+                x.drawImage(img, (ax - pr.x) * kx, (ay - pr.y) * ky, aw * kx, ah * ky, ax, ay, aw, ah);
             } else {
-                // Fill (default): cover the art zone; the crop window sits
-                // at pos% of the source slack on each axis.
-                if (ir > r) { sh = img.height; sw = sh * r; sxx = (img.width - sw) * pfx; syy = 0; }
-                else { sw = img.width; sh = sw / r; sxx = 0; syy = (img.height - sh) * pfy; }
-                x.drawImage(img, sxx, syy, sw, sh, ax, ay, aw, ah);
+                // Fill zoomed out below 100%: the photo no longer covers
+                // the zone — show the art-zone backing around it.
+                x.fillStyle = '#141b2c'; x.fillRect(ax, ay, aw, ah);
+                x.drawImage(img, pr.x, pr.y, pr.w, pr.h);
             }
             var grd = x.createLinearGradient(0, ay + ah - 180, 0, ay + ah);
             grd.addColorStop(0, 'rgba(10,13,19,0)');
@@ -14925,7 +14939,9 @@ function _doResetSheet() {
     clearPortrait();
     currentPhotoPosX = 50;
     currentPhotoPosY = 50;
+    currentPhotoZoom = 100;
     setPhotoPos();
+    setPhotoZoom();
     setPhotoFit('fill');
     currentActionPhotoIncludeInExport = true;
     clearActionPhoto();
@@ -15182,6 +15198,7 @@ function collectHero() {
         photoFit:   currentPhotoFit === 'fit' ? 'fit' : 'fill',
         photoPosX:  _normPhotoPos(currentPhotoPosX),
         photoPosY:  _normPhotoPos(currentPhotoPosY),
+        photoZoom:  _normPhotoZoom(currentPhotoZoom),
         actionPhoto: currentActionPhoto || "",
         actionPhotoRatio: currentActionPhotoRatio || 0,
         actionPhotoIncludeInExport: currentActionPhotoIncludeInExport !== false,
@@ -15397,7 +15414,9 @@ function applyHero(hero) {
     if (typeof bpRenderLinkField === "function") { try { bpRenderLinkField(); } catch(e) {} }
     currentPhotoPosX = _normPhotoPos(hero.photoPosX);
     currentPhotoPosY = _normPhotoPos(hero.photoPosY);
+    currentPhotoZoom = _normPhotoZoom(hero.photoZoom);
     setPhotoPos();
+    setPhotoZoom();
     setPhotoFit(hero.photoFit === 'fit' ? 'fit' : 'fill');
     if(hero.portrait) setPortrait(hero.portrait, hero.portraitRatio);
     else clearPortrait();
@@ -18941,60 +18960,80 @@ function _pdfImageFormat(dataUrl) {
 // stretching the source to exactly fit w×h, which distorts non-matching
 // aspect ratios. Falls back to a plain stretch if the ratio is unknown or
 // this jsPDF build doesn't support clipping.
-function _pdfFitRect(ratio, x, y, w, h, posX, posY) {
-    // Contain: largest rect of aspect `ratio` that fits inside (x,y,w,h),
-    // placed at fraction posX/posY of the leftover space on each axis
-    // (0.5 = centered, the default; 0 = top/left, 1 = bottom/right).
+
+// THE shared photo placement computation, used by every portrait renderer
+// (PDF sheet, trading card, share card, and the Bio canvas preview) so
+// they can never drift apart: for an image of aspect `ratio` (w/h) inside
+// frame (x,y,w,h), the base size is the COVER size in 'fill' mode or the
+// CONTAIN size in 'fit' mode; the drawn size is base × zoomF (1 = 100%);
+// the placed origin is the frame origin + (frame − drawn) × pos on each
+// axis. A negative leftover overflows the frame (a crop — callers clip);
+// a positive leftover letterboxes. pos 0.5/0.5 + zoomF 1 reproduces the
+// classic centered behavior exactly.
+function _photoPlaceRect(ratio, x, y, w, h, mode, posX, posY, zoomF) {
     if (!ratio || !isFinite(ratio) || ratio <= 0) return {x:x, y:y, w:w, h:h};
     const fx = (typeof posX === 'number' && isFinite(posX)) ? posX : 0.5;
     const fy = (typeof posY === 'number' && isFinite(posY)) ? posY : 0.5;
+    const z  = (typeof zoomF === 'number' && isFinite(zoomF) && zoomF > 0) ? zoomF : 1;
     const boxRatio = w / h;
     let dw, dh;
-    if (ratio > boxRatio) { dw = w; dh = w / ratio; }
-    else { dh = h; dw = h * ratio; }
+    if (mode === 'fit') {
+        if (ratio > boxRatio) { dw = w; dh = w / ratio; }
+        else { dh = h; dw = h * ratio; }
+    } else {
+        if (ratio > boxRatio) { dh = h; dw = h * ratio; }
+        else { dw = w; dh = w / ratio; }
+    }
+    dw *= z; dh *= z;
     return {x: x + (w - dw) * fx, y: y + (h - dh) * fy, w: dw, h: dh};
 }
-function _pdfDrawFitImage(doc, dataUrl, ratio, x, y, w, h, posX, posY) {
-    const r = _pdfFitRect(ratio, x, y, w, h, posX, posY);
-    const fmt = _pdfImageFormat(dataUrl);
-    try { doc.addImage(dataUrl, fmt, r.x, r.y, r.w, r.h, '', 'FAST'); } catch(e) {}
-    return r;
+function _pdfFitRect(ratio, x, y, w, h, posX, posY) {
+    // Contain placement (see _photoPlaceRect), kept for existing callers.
+    return _photoPlaceRect(ratio, x, y, w, h, 'fit', posX, posY, 1);
 }
-function _pdfDrawCoverImage(doc, dataUrl, ratio, x, y, w, h, posX, posY) {
-    const fmt = _pdfImageFormat(dataUrl);
-    if (!ratio || !isFinite(ratio) || ratio <= 0) {
-        doc.addImage(dataUrl, fmt, x, y, w, h, '', 'FAST');
-        return;
-    }
-    // Crop window sits at fraction posX/posY of the overflow slack on
-    // each axis (0.5 = centered, the default).
-    const fx = (typeof posX === 'number' && isFinite(posX)) ? posX : 0.5;
-    const fy = (typeof posY === 'number' && isFinite(posY)) ? posY : 0.5;
-    const boxRatio = w / h;
-    let dw, dh, dx, dy;
-    if (ratio > boxRatio) {
-        dh = h; dw = h * ratio;
-        dx = x - (dw - w) * fx; dy = y;
-    } else {
-        dw = w; dh = w / ratio;
-        dx = x; dy = y - (dh - h) * fy;
-    }
+// Draws dataUrl at placed rect r, clipped to the frame (cx,cy,cw,ch) so
+// any overflow is cut at the frame edges instead of spilling over the
+// sheet. Falls back to an unclipped draw if this jsPDF build can't clip.
+function _pdfAddImageClipped(doc, dataUrl, fmt, r, cx, cy, cw, ch) {
     let clipped = false;
     try {
         if (typeof doc.clip === 'function') {
             if (typeof doc.saveGraphicsState === 'function') doc.saveGraphicsState();
-            doc.rect(x, y, w, h, null);
+            doc.rect(cx, cy, cw, ch, null);
             doc.clip();
             if (typeof doc.discardPath === 'function') doc.discardPath();
             clipped = true;
         }
     } catch (e) { clipped = false; }
     try {
-        doc.addImage(dataUrl, fmt, dx, dy, dw, dh, '', 'FAST');
+        doc.addImage(dataUrl, fmt, r.x, r.y, r.w, r.h, '', 'FAST');
     } catch (e) {}
     if (clipped) {
         try { if (typeof doc.restoreGraphicsState === 'function') doc.restoreGraphicsState(); } catch (e) {}
     }
+}
+function _pdfDrawFitImage(doc, dataUrl, ratio, x, y, w, h, posX, posY, zoomF) {
+    const r = _photoPlaceRect(ratio, x, y, w, h, 'fit', posX, posY, zoomF);
+    const fmt = _pdfImageFormat(dataUrl);
+    // At 100% zoom a fit image never overflows its frame and is drawn
+    // plainly, exactly as before; zoomed in it can overflow, so clip.
+    const overflows = r.x < x - 1e-9 || r.y < y - 1e-9 ||
+                      r.x + r.w > x + w + 1e-9 || r.y + r.h > y + h + 1e-9;
+    if (overflows) _pdfAddImageClipped(doc, dataUrl, fmt, r, x, y, w, h);
+    else { try { doc.addImage(dataUrl, fmt, r.x, r.y, r.w, r.h, '', 'FAST'); } catch(e) {} }
+    return r;
+}
+function _pdfDrawCoverImage(doc, dataUrl, ratio, x, y, w, h, posX, posY, zoomF) {
+    const fmt = _pdfImageFormat(dataUrl);
+    if (!ratio || !isFinite(ratio) || ratio <= 0) {
+        doc.addImage(dataUrl, fmt, x, y, w, h, '', 'FAST');
+        return;
+    }
+    // Placed per _photoPlaceRect in 'fill' mode: the crop window sits at
+    // fraction posX/posY of the overflow slack (0.5 = centered, default),
+    // scaled by zoomF; clipped to the frame either way.
+    const r = _photoPlaceRect(ratio, x, y, w, h, 'fill', posX, posY, zoomF);
+    _pdfAddImageClipped(doc, dataUrl, fmt, r, x, y, w, h);
 }
 
 async function exportCharacterPDF(layout='standard') {
@@ -19095,8 +19134,9 @@ async function exportCharacterPDF(layout='standard') {
         if(hero.portrait) {
             try {
                 const _ppx = _normPhotoPos(hero.photoPosX) / 100, _ppy = _normPhotoPos(hero.photoPosY) / 100;
-                if (hero.photoFit === 'fit') _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H, _ppx, _ppy);
-                else _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H, _ppx, _ppy);
+                const _pzf = _normPhotoZoom(hero.photoZoom) / 100;
+                if (hero.photoFit === 'fit') _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H, _ppx, _ppy, _pzf);
+                else _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H, _ppx, _ppy, _pzf);
                 // edge highlight
                 stroke(T.gold); doc.setLineWidth(1.5);
                 doc.line(PW, 0, PW, HEADER_H);
@@ -19867,7 +19907,8 @@ async function exportCharacterPDF(layout='standard') {
         // cropping overflow — no dead space, and the name bar sits at the
         // bottom of the frame. 'fit' shows the whole image, letterboxed in
         // the frame, and the name bar hugs the photo. Position within the
-        // slack follows hero.photoPosX/photoPosY (50 = centered).
+        // slack follows hero.photoPosX/photoPosY (50 = centered); scale is
+        // further multiplied by hero.photoZoom (100 = none).
         if(layout === 'showcase' && hero.portrait) {
             const portraitAvail = CONTENT_BOTTOM - yR - 4;
             if(portraitAvail > 40) {
@@ -19879,10 +19920,11 @@ async function exportCharacterPDF(layout='standard') {
                 let imgOk = false, fitR = null;
                 try {
                     const _spx = _normPhotoPos(hero.photoPosX) / 100, _spy = _normPhotoPos(hero.photoPosY) / 100;
+                    const _szf = _normPhotoZoom(hero.photoZoom) / 100;
                     if (hero.photoFit === 'fit') {
-                        fitR = _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph, _spx, _spy);
+                        fitR = _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph, _spx, _spy, _szf);
                     } else {
-                        _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph, _spx, _spy);
+                        _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph, _spx, _spy, _szf);
                         fitR = {x: rightX, y: yR, w: pw, h: ph};
                     }
                     imgOk = true;
@@ -19896,7 +19938,16 @@ async function exportCharacterPDF(layout='standard') {
                 doc.setLineWidth(1.5);
                 doc.roundedRect(rightX, yR, pw, ph, 3, 3);
                 // name overlay at bottom of the fitted photo (not the frame)
-                const nb = fitR || {x: rightX, y: yR, w: pw, h: ph};
+                let nb = fitR || {x: rightX, y: yR, w: pw, h: ph};
+                // A zoomed 'fit' photo can overflow the frame (the draw clips
+                // it there) — keep the name bar on the visible part. At 100%
+                // zoom the fitted rect never overflows, so this is a no-op.
+                if (nb.x < rightX || nb.y < yR || nb.x + nb.w > rightX + pw || nb.y + nb.h > yR + ph) {
+                    const nx = Math.max(nb.x, rightX), ny = Math.max(nb.y, yR);
+                    nb = { x: nx, y: ny,
+                           w: Math.min(nb.x + nb.w, rightX + pw) - nx,
+                           h: Math.min(nb.y + nb.h, yR + ph) - ny };
+                }
                 fill([0,0,0]);
                 doc.setGState && doc.setGState(new doc.GState({opacity:0.55}));
                 rect(nb.x, nb.y + nb.h - 22, nb.w, 22, 0);
@@ -20466,6 +20517,12 @@ let currentPhotoFit = 'fill';
 // heroes saved before this setting existed behave as 50/50.
 let currentPhotoPosX = 50;
 let currentPhotoPosY = 50;
+// How far the portrait is zoomed inside its frame on exports, as a
+// percent: 100 = the classic fit/fill scale, 50 = zoomed out to half
+// size, 200 = zoomed in to double. Applies on top of photoFit/photoPos
+// in every renderer. Stored per hero as hero.photoZoom; heroes saved
+// before this setting existed behave as 100.
+let currentPhotoZoom = 100;
 
 // Normalizes a stored photo-position value to an integer 0–100; anything
 // missing or non-numeric becomes 50 (centered).
@@ -20473,6 +20530,13 @@ function _normPhotoPos(v) {
     const n = (typeof v === 'number') ? v : parseFloat(v);
     if (!isFinite(n)) return 50;
     return Math.min(100, Math.max(0, Math.round(n)));
+}
+// Normalizes a stored photo-zoom value to an integer percent in
+// [50, 200]; anything missing or non-numeric becomes 100 (no zoom).
+function _normPhotoZoom(v) {
+    const n = (typeof v === 'number') ? v : parseFloat(v);
+    if (!isFinite(n)) return 100;
+    return Math.min(200, Math.max(50, Math.round(n)));
 }
 // Tracks the vaultId of whichever saved character is currently loaded in the
 // editor, so saving/overwriting reuses the same IndexedDB portrait record
@@ -20514,6 +20578,7 @@ function setPortrait(dataUrl, ratio) {
     img.style.display = "block";
     placeholder.style.display = "none";
     clearBtn.style.display = "block";
+    drawPortraitPreview();
 }
 
 // Sets the portrait's export fit mode ('fill' | 'fit'), updates the Bio
@@ -20538,6 +20603,7 @@ function setPhotoFit(mode) {
         paint(fillBtn, currentPhotoFit === 'fill');
         paint(fitBtn,  currentPhotoFit === 'fit');
     }
+    drawPortraitPreview();
 }
 
 // Sets one axis of the portrait's in-frame position (0–100, 50 = centered),
@@ -20555,12 +20621,27 @@ function setPhotoPos(axis, value) {
     if (sy) sy.value = currentPhotoPosY;
     const img = document.getElementById("portraitImg");
     if (img) img.style.objectPosition = currentPhotoPosX + '% ' + currentPhotoPosY + '%';
+    drawPortraitPreview();
 }
 
-// Snaps the portrait position back to centered (50/50) on both axes.
+// Sets the portrait's in-frame zoom percent (50–200, 100 = the classic
+// fit/fill scale), syncs the Bio slider + readout, and redraws the
+// preview. Called with no argument it just re-syncs the UI from the
+// current global (used when loading a hero).
+function setPhotoZoom(value) {
+    if (typeof value !== 'undefined') currentPhotoZoom = _normPhotoZoom(value);
+    const zs = document.getElementById("photoZoomSlider");
+    if (zs) zs.value = currentPhotoZoom;
+    const zv = document.getElementById("photoZoomVal");
+    if (zv) zv.textContent = currentPhotoZoom + '%';
+    drawPortraitPreview();
+}
+
+// Snaps the portrait back to centered (50/50) at 100% zoom.
 function centerPhotoPos() {
     setPhotoPos('x', 50);
     setPhotoPos('y', 50);
+    setPhotoZoom(100);
 }
 
 function clearPortrait() {
@@ -20573,6 +20654,175 @@ function clearPortrait() {
     img.style.display = "none";
     placeholder.style.display = "flex";
     clearBtn.style.display = "none";
+    drawPortraitPreview();
+}
+
+// ── Canvas preview of the PDF portrait block ──────────────────────────
+// The Bio preview is a <canvas> layered over the (still fully functional)
+// #portraitImg inside #portraitWrap. It renders the showcase sheet's
+// portrait BLOCK — panel background, the photo, gold border, and the
+// name bar — not just the photo, using _photoPlaceRect, the exact
+// placement computation the exporters use (fit mode + position + zoom),
+// in a box with the showcase frame's full-height aspect (292×240; on
+// the sheet the frame takes whatever height the column leaves). The <img> stays
+// loaded underneath for the other features that read it (share card,
+// home thumbnails). The picture can also be dragged directly on the
+// preview (see _pvAttachHandlers).
+let _pvImg = new Image();
+_pvImg.onload = function() { drawPortraitPreview(); };
+let _pvHandlersAttached = false;
+let _pvDrag = null;
+let _pvSuppressClick = false;
+
+// Theme color ([r,g,b] in pdfThemes) for the export theme the PDF would
+// use, so the preview block wears the same panel/gold as the sheet.
+function _pvThemeColor(key, fallback) {
+    try {
+        if (typeof pdfThemes !== 'undefined') {
+            const T = pdfThemes[(typeof _pdfExportTheme !== 'undefined' && _pdfExportTheme) ? _pdfExportTheme : currentTheme] || pdfThemes[currentTheme] || pdfThemes.shield;
+            const c = T && T[key];
+            if (Array.isArray(c) && c.length >= 3) return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+        }
+    } catch(e) {}
+    return fallback;
+}
+
+function _pvRoundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+}
+
+function drawPortraitPreview() {
+    const cv = document.getElementById("portraitPreviewCanvas");
+    if (!cv) return;
+    _pvAttachHandlers();
+    let ctx = null;
+    try { ctx = cv.getContext('2d'); } catch(e) { ctx = null; }
+    if (!ctx) { cv.style.display = currentPortrait ? "block" : "none"; return; }
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    if (!currentPortrait) { cv.style.display = "none"; return; }
+    cv.style.display = "block";
+    const gold  = _pvThemeColor('gold',  'rgb(255,204,0)');
+    const panel = _pvThemeColor('panel', 'rgb(22,27,36)');
+    // Panel background (the exporter fills the frame with the panel color)
+    ctx.fillStyle = panel;
+    ctx.fillRect(0, 0, W, H);
+    // Photo, placed by the shared math and clipped to the frame
+    if (_pvImg.src !== currentPortrait) { try { _pvImg.src = currentPortrait; } catch(e) {} }
+    const ready = _pvImg.naturalWidth > 0 || (_pvImg.complete && _pvImg.width > 0);
+    let placed = null;
+    if (ready && currentPortraitRatio) {
+        placed = _photoPlaceRect(currentPortraitRatio, 0, 0, W, H,
+            currentPhotoFit, currentPhotoPosX / 100, currentPhotoPosY / 100,
+            _normPhotoZoom(currentPhotoZoom) / 100);
+        ctx.save();
+        ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+        try { ctx.drawImage(_pvImg, placed.x, placed.y, placed.w, placed.h); } catch(e) {}
+        ctx.restore();
+    }
+    // Gold border (inset by half the line width so it sits inside the box)
+    ctx.strokeStyle = gold;
+    ctx.lineWidth = 1.5;
+    _pvRoundRectPath(ctx, 0.75, 0.75, W - 1.5, H - 1.5, 3);
+    ctx.stroke();
+    // Name bar: at the frame's bottom in fill mode; hugging the fitted
+    // photo in fit mode (clamped to the visible part when a zoomed fit
+    // photo overflows the frame) — the exporter's exact rule.
+    let nb = (currentPhotoFit === 'fit' && placed) ? placed : {x: 0, y: 0, w: W, h: H};
+    if (nb.x < 0 || nb.y < 0 || nb.x + nb.w > W || nb.y + nb.h > H) {
+        const nx = Math.max(nb.x, 0), ny = Math.max(nb.y, 0);
+        nb = { x: nx, y: ny, w: Math.min(nb.x + nb.w, W) - nx, h: Math.min(nb.y + nb.h, H) - ny };
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(nb.x, nb.y + nb.h - 22, nb.w, 22);
+    const nameEl = document.getElementById("heroName");
+    const nm = ((nameEl && nameEl.value) || '').toUpperCase();
+    if (nm) {
+        ctx.fillStyle = gold;
+        ctx.font = 'bold italic 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        try { ctx.fillText(nm, nb.x + nb.w / 2, nb.y + nb.h - 8); } catch(e) {}
+    }
+}
+
+// Converts a drag delta (in frame pixels) into a new position percent:
+// the placed origin moves WITH the pointer by deltaPx, i.e.
+// newDest = slack × pos/100 + deltaPx, solved back for pos and clamped
+// to 0–100. With no slack on an axis the position can't change.
+function _photoDragPos(posPct, deltaPx, frameSize, drawnSize) {
+    const slack = frameSize - drawnSize;
+    if (!isFinite(slack) || Math.abs(slack) < 1e-9) return _normPhotoPos(posPct);
+    const dest = slack * (_normPhotoPos(posPct) / 100) + deltaPx;
+    return _normPhotoPos(dest / slack * 100);
+}
+
+// Pointer drag on the preview: the picture follows the pointer (drag
+// down = the image moves down, revealing its top — matching the shared
+// math through _photoDragPos). Dragging syncs the position sliders via
+// setPhotoPos; a real drag swallows the wrap's click (which would open
+// the file picker). touch-action:none on the canvas keeps touch drags
+// from scrolling the page.
+function _pvAttachHandlers() {
+    if (_pvHandlersAttached) return;
+    const cv = document.getElementById("portraitPreviewCanvas");
+    const wrap = document.getElementById("portraitWrap");
+    if (!cv || !wrap) return;
+    _pvHandlersAttached = true;
+    wrap.addEventListener('click', function(e) {
+        if (_pvSuppressClick) {
+            e.stopPropagation();
+            e.preventDefault();
+            _pvSuppressClick = false;
+        }
+    }, true);
+    cv.addEventListener('pointerdown', function(e) {
+        if (!currentPortrait || !currentPortraitRatio) return;
+        const r = _photoPlaceRect(currentPortraitRatio, 0, 0, cv.width, cv.height,
+            currentPhotoFit, currentPhotoPosX / 100, currentPhotoPosY / 100,
+            _normPhotoZoom(currentPhotoZoom) / 100);
+        _pvDrag = { id: e.pointerId, sx: e.clientX, sy: e.clientY,
+                    px: currentPhotoPosX, py: currentPhotoPosY,
+                    dw: r.w, dh: r.h, moved: false };
+        try { cv.setPointerCapture(e.pointerId); } catch(err) {}
+    });
+    cv.addEventListener('pointermove', function(e) {
+        if (!_pvDrag || e.pointerId !== _pvDrag.id) return;
+        const rect = cv.getBoundingClientRect();
+        const kx = rect.width  ? cv.width  / rect.width  : 1;
+        const ky = rect.height ? cv.height / rect.height : 1;
+        const dx = (e.clientX - _pvDrag.sx) * kx;
+        const dy = (e.clientY - _pvDrag.sy) * ky;
+        if (Math.abs(e.clientX - _pvDrag.sx) + Math.abs(e.clientY - _pvDrag.sy) > 4) _pvDrag.moved = true;
+        const nx = _photoDragPos(_pvDrag.px, dx, cv.width,  _pvDrag.dw);
+        const ny = _photoDragPos(_pvDrag.py, dy, cv.height, _pvDrag.dh);
+        if (nx !== currentPhotoPosX) setPhotoPos('x', nx);
+        if (ny !== currentPhotoPosY) setPhotoPos('y', ny);
+    });
+    function endDrag(e) {
+        if (!_pvDrag) return;
+        if (e && e.pointerId !== undefined && e.pointerId !== _pvDrag.id) return;
+        if (_pvDrag.moved) {
+            _pvSuppressClick = true;
+            setTimeout(function() { _pvSuppressClick = false; }, 350);
+        }
+        _pvDrag = null;
+    }
+    cv.addEventListener('pointerup', endDrag);
+    cv.addEventListener('pointercancel', endDrag);
+    // The name bar carries the hero's name — keep it live while typing.
+    const nameEl = document.getElementById("heroName");
+    if (nameEl) nameEl.addEventListener('input', function() { drawPortraitPreview(); });
 }
 
 // ==========================================
@@ -28791,19 +29041,29 @@ window.generateRandomNPC = generateRandomNPC;
                 // Honor the hero's photo fit: 'fill' (default) cover-crops
                 // the square; 'fit' letterboxes the whole image. Position
                 // within the slack follows the current photo position
-                // (50/50 = centered). (Was a plain stretch into the square.)
+                // (50/50 = centered) and the current photo zoom (100 =
+                // none) — all via the shared _photoPlaceRect. (Was a plain
+                // stretch into the square.)
                 var scIw = portraitImg.naturalWidth || 0, scIh = portraitImg.naturalHeight || 0;
                 var scFx = (typeof currentPhotoPosX !== 'undefined') ? _normPhotoPos(currentPhotoPosX) / 100 : 0.5;
                 var scFy = (typeof currentPhotoPosY !== 'undefined') ? _normPhotoPos(currentPhotoPosY) / 100 : 0.5;
-                if (scIw > 0 && scIh > 0 && typeof currentPhotoFit !== 'undefined' && currentPhotoFit === 'fit') {
-                    ctx.fillStyle = '#1a1f2e'; ctx.fillRect(px, py, pw, ph);
-                    var scFitScale = Math.min(pw / scIw, ph / scIh);
-                    var scDw = scIw * scFitScale, scDh = scIh * scFitScale;
-                    ctx.drawImage(portraitImg, px + (pw - scDw) * scFx, py + (ph - scDh) * scFy, scDw, scDh);
-                } else if (scIw > 0 && scIh > 0) {
-                    var scCovScale = Math.max(pw / scIw, ph / scIh);
-                    var scSw = pw / scCovScale, scSh = ph / scCovScale;
-                    ctx.drawImage(portraitImg, (scIw - scSw) * scFx, (scIh - scSh) * scFy, scSw, scSh, px, py, pw, ph);
+                var scZf = (typeof currentPhotoZoom !== 'undefined') ? _normPhotoZoom(currentPhotoZoom) / 100 : 1;
+                if (scIw > 0 && scIh > 0) {
+                    var scMode = (typeof currentPhotoFit !== 'undefined' && currentPhotoFit === 'fit') ? 'fit' : 'fill';
+                    var scPr = _photoPlaceRect(scIw / scIh, px, py, pw, ph, scMode, scFx, scFy, scZf);
+                    if (scMode === 'fit') {
+                        ctx.fillStyle = '#1a1f2e'; ctx.fillRect(px, py, pw, ph);
+                        ctx.drawImage(portraitImg, scPr.x, scPr.y, scPr.w, scPr.h);
+                    } else if (scPr.w >= pw && scPr.h >= ph) {
+                        // Covering placement: draw the visible source
+                        // window (exactly the old cover crop at 100%).
+                        var scKx = scIw / scPr.w, scKy = scIh / scPr.h;
+                        ctx.drawImage(portraitImg, (px - scPr.x) * scKx, (py - scPr.y) * scKy, pw * scKx, ph * scKy, px, py, pw, ph);
+                    } else {
+                        // Fill zoomed out below 100%: backing shows around.
+                        ctx.fillStyle = '#1a1f2e'; ctx.fillRect(px, py, pw, ph);
+                        ctx.drawImage(portraitImg, scPr.x, scPr.y, scPr.w, scPr.h);
+                    }
                 } else {
                     ctx.drawImage(portraitImg, px, py, pw, ph);
                 }
