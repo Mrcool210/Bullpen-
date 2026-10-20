@@ -3587,6 +3587,13 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   <button onclick="document.getElementById('portraitCameraInput').click()" style="flex:1;min-width:80px;font-size:0.7em;padding:7px 4px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;">📷 Camera</button>
 </div>
 <button id="portraitClearBtn" onclick="clearPortrait()" style="margin-top:6px; padding:5px; font-size:0.68em; background:var(--error); display:none;">✕ Remove</button>
+<div id="photoFitRow" style="margin-top:8px;">
+<div style="font-size:0.68em; font-weight:bold; color:var(--text-label); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">PDF Photo Fit</div>
+<div style="display:flex; gap:6px;">
+<button type="button" id="photoFitFillBtn" onclick="setPhotoFit('fill')" style="flex:1; font-size:0.7em; padding:6px 4px; background:var(--primary); color:#fff; border:1px solid var(--primary); border-radius:6px; font-weight:bold;">Fill frame</button>
+<button type="button" id="photoFitFitBtn" onclick="setPhotoFit('fit')" style="flex:1; font-size:0.7em; padding:6px 4px; background:var(--bg-inset); border:1px solid var(--border); border-radius:6px;">Fit whole image</button>
+</div>
+</div>
 </div>
 <!-- Action Photo -->
 <div class="bio-photo-col" id="actionPhotoPhotoCol" style="flex-shrink:0; width:130px; display:none;">
@@ -8689,9 +8696,20 @@ function cardRender(hero, done) {
         x.beginPath(); x.rect(ax, ay, aw, ah); x.clip();
         if (img) {
             var ir = img.width / img.height, r = aw / ah, sw, sh, sxx, syy;
-            if (ir > r) { sh = img.height; sw = sh * r; sxx = (img.width - sw) / 2; syy = 0; }
-            else { sw = img.width; sh = sw / r; sxx = 0; syy = (img.height - sh) / 2; }
-            x.drawImage(img, sxx, syy, sw, sh, ax, ay, aw, ah);
+            if (hero.photoFit === 'fit') {
+                // Fit: whole image visible, centered, letterboxed over the
+                // art-zone backing color.
+                x.fillStyle = '#141b2c'; x.fillRect(ax, ay, aw, ah);
+                var fw, fh;
+                if (ir > r) { fw = aw; fh = aw / ir; }
+                else { fh = ah; fw = ah * ir; }
+                x.drawImage(img, ax + (aw - fw) / 2, ay + (ah - fh) / 2, fw, fh);
+            } else {
+                // Fill (default): cover the art zone with a centered crop.
+                if (ir > r) { sh = img.height; sw = sh * r; sxx = (img.width - sw) / 2; syy = 0; }
+                else { sw = img.width; sh = sw / r; sxx = 0; syy = (img.height - sh) / 2; }
+                x.drawImage(img, sxx, syy, sw, sh, ax, ay, aw, ah);
+            }
             var grd = x.createLinearGradient(0, ay + ah - 180, 0, ay + ah);
             grd.addColorStop(0, 'rgba(10,13,19,0)');
             grd.addColorStop(1, 'rgba(10,13,19,0.85)');
@@ -14881,6 +14899,7 @@ function _doResetSheet() {
     window._bpLinkShared = false;
     if (typeof bpRenderLinkField === "function") { try { bpRenderLinkField(); } catch(e) {} }
     clearPortrait();
+    setPhotoFit('fill');
     currentActionPhotoIncludeInExport = true;
     clearActionPhoto();
     if (typeof bsRenderAll === 'function') bsRenderAll();
@@ -15133,6 +15152,7 @@ function collectHero() {
         vaultId:    currentEditingVaultId || "",
         portrait:   currentPortrait || "",
         portraitRatio: currentPortraitRatio || 0,
+        photoFit:   currentPhotoFit === 'fit' ? 'fit' : 'fill',
         actionPhoto: currentActionPhoto || "",
         actionPhotoRatio: currentActionPhotoRatio || 0,
         actionPhotoIncludeInExport: currentActionPhotoIncludeInExport !== false,
@@ -15346,6 +15366,7 @@ function applyHero(hero) {
     charPNotes   = hero.powerNotes ? {...hero.powerNotes} : {};
     currentEditingVaultId = hero.vaultId || "";
     if (typeof bpRenderLinkField === "function") { try { bpRenderLinkField(); } catch(e) {} }
+    setPhotoFit(hero.photoFit === 'fit' ? 'fit' : 'fill');
     if(hero.portrait) setPortrait(hero.portrait, hero.portraitRatio);
     else clearPortrait();
     currentActionPhotoIncludeInExport = hero.actionPhotoIncludeInExport !== false;
@@ -19024,11 +19045,16 @@ async function exportCharacterPDF(layout='standard') {
         );
         doc.triangle(W*0.52, 0,  W*0.58, 0,  W*0.45, HEADER_H, 'F');
 
-        // Portrait bled into header (top-left)
+        // Portrait bled into header (top-left) — placed per hero.photoFit:
+        // 'fill' (default) covers the strip, centered, cropping overflow;
+        // 'fit' shows the whole image, centered, letterboxed against the
+        // header art. (Was a raw addImage stretch to 56×HEADER_H, which
+        // distorted any photo that didn't match that exact aspect.)
         const PW = hero.portrait ? 56 : 0;
         if(hero.portrait) {
             try {
-                doc.addImage(hero.portrait, _pdfImageFormat(hero.portrait), 0, 0, PW, HEADER_H);
+                if (hero.photoFit === 'fit') _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H);
+                else _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H);
                 // edge highlight
                 stroke(T.gold); doc.setLineWidth(1.5);
                 doc.line(PW, 0, PW, HEADER_H);
@@ -19795,8 +19821,10 @@ async function exportCharacterPDF(layout='standard') {
         }
 
         // Showcase layout: large portrait beneath tags in right column.
-        // The photo is FIT (contain) so the whole image always shows, centered
-        // in the frame — no cropping. The name bar hugs the fitted photo.
+        // Placement honors hero.photoFit: 'fill' (default) COVERS the frame,
+        // centered, cropping overflow — no dead space, and the name bar sits
+        // at the bottom of the frame. 'fit' shows the whole image, centered
+        // and letterboxed in the frame, and the name bar hugs the photo.
         if(layout === 'showcase' && hero.portrait) {
             const portraitAvail = CONTENT_BOTTOM - yR - 4;
             if(portraitAvail > 40) {
@@ -19807,7 +19835,12 @@ async function exportCharacterPDF(layout='standard') {
                 fill(T.panel); rect(rightX, yR, pw, ph, 3);
                 let imgOk = false, fitR = null;
                 try {
-                    fitR = _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph);
+                    if (hero.photoFit === 'fit') {
+                        fitR = _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph);
+                    } else {
+                        _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph);
+                        fitR = {x: rightX, y: yR, w: pw, h: ph};
+                    }
                     imgOk = true;
                 } catch(e) { imgOk = false; }
                 if(!imgOk) {
@@ -20374,6 +20407,13 @@ let currentPortrait = "";
 // time (resizing doesn't change it). Lets the PDF export crop-to-fill a
 // framed box instead of stretching the image to match its aspect ratio.
 let currentPortraitRatio = 0;
+// How the portrait is placed inside framed boxes on exports (PDF sheet,
+// trading card, share card): 'fill' = scale to COVER the frame, centered,
+// cropping overflow (no dead space, no distortion); 'fit' = whole image
+// visible, centered, letterboxed. Stored per hero as hero.photoFit; any
+// value other than 'fit' — including heroes saved before this setting
+// existed — behaves as 'fill'.
+let currentPhotoFit = 'fill';
 // Tracks the vaultId of whichever saved character is currently loaded in the
 // editor, so saving/overwriting reuses the same IndexedDB portrait record
 // instead of creating (and orphaning) a new one every time.
@@ -20414,6 +20454,27 @@ function setPortrait(dataUrl, ratio) {
     img.style.display = "block";
     placeholder.style.display = "none";
     clearBtn.style.display = "block";
+}
+
+// Sets the portrait's export fit mode ('fill' | 'fit'), updates the Bio
+// toggle buttons, and switches the on-screen portrait preview between
+// cover/contain so the preview matches what exports will do.
+function setPhotoFit(mode) {
+    currentPhotoFit = (mode === 'fit') ? 'fit' : 'fill';
+    const img = document.getElementById("portraitImg");
+    if (img) img.style.objectFit = (currentPhotoFit === 'fit') ? 'contain' : 'cover';
+    const fillBtn = document.getElementById("photoFitFillBtn");
+    const fitBtn  = document.getElementById("photoFitFitBtn");
+    if (fillBtn && fitBtn) {
+        const paint = function(btn, active) {
+            btn.style.background  = active ? 'var(--primary)' : 'var(--bg-inset)';
+            btn.style.color       = active ? '#fff' : '';
+            btn.style.borderColor = active ? 'var(--primary)' : 'var(--border)';
+            btn.style.fontWeight  = active ? 'bold' : '';
+        };
+        paint(fillBtn, currentPhotoFit === 'fill');
+        paint(fitBtn,  currentPhotoFit === 'fit');
+    }
 }
 
 function clearPortrait() {
@@ -28640,7 +28701,24 @@ window.generateRandomNPC = generateRandomNPC;
         ctx.closePath();
         ctx.clip();
         if (portraitImg && portraitImg.src && portraitImg.style.display !== 'none') {
-            try { ctx.drawImage(portraitImg, px, py, pw, ph); }
+            try {
+                // Honor the hero's photo fit: 'fill' (default) cover-crops the
+                // square, centered; 'fit' letterboxes the whole image,
+                // centered. (Was a plain stretch into the square.)
+                var scIw = portraitImg.naturalWidth || 0, scIh = portraitImg.naturalHeight || 0;
+                if (scIw > 0 && scIh > 0 && typeof currentPhotoFit !== 'undefined' && currentPhotoFit === 'fit') {
+                    ctx.fillStyle = '#1a1f2e'; ctx.fillRect(px, py, pw, ph);
+                    var scFitScale = Math.min(pw / scIw, ph / scIh);
+                    var scDw = scIw * scFitScale, scDh = scIh * scFitScale;
+                    ctx.drawImage(portraitImg, px + (pw - scDw) / 2, py + (ph - scDh) / 2, scDw, scDh);
+                } else if (scIw > 0 && scIh > 0) {
+                    var scCovScale = Math.max(pw / scIw, ph / scIh);
+                    var scSw = pw / scCovScale, scSh = ph / scCovScale;
+                    ctx.drawImage(portraitImg, (scIw - scSw) / 2, (scIh - scSh) / 2, scSw, scSh, px, py, pw, ph);
+                } else {
+                    ctx.drawImage(portraitImg, px, py, pw, ph);
+                }
+            }
             catch(e) {
                 ctx.fillStyle = '#1a1f2e';
                 ctx.fillRect(px, py, pw, ph);
