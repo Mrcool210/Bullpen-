@@ -2863,6 +2863,13 @@ button[onclick*="openExportModal"] {
     min-width:  100px !important;
 }
 
+/* ── Bio portrait preview: same aspect as the showcase PDF frame ────── */
+/* Showcase frame = colW (292pt) × min(avail, colW×1.2, 240pt) = 292×240. */
+#portraitWrap {
+    aspect-ratio: 292 / 240;
+    min-height: 0 !important;
+}
+
 /* ── Schooling boxes: scroll on very narrow screens ─────────────────── */
 @media (max-width: 480px) {
     #schoolingBoxes, #schoolingRewards {
@@ -3582,6 +3589,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 </div>
 <input accept="image/*" id="portraitInput" onchange="handlePortraitFile(this)" style="display:none;" type="file">
 <input accept="image/*" capture="environment" id="portraitCameraInput" onchange="handlePortraitFile(this)" style="display:none;" type="file">
+<div style="font-size:0.62em; color:var(--text-label); margin-top:4px; text-align:center;">Preview — matches the showcase PDF sheet</div>
 <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
   <button onclick="document.getElementById('portraitInput').click()" style="flex:1;min-width:80px;font-size:0.7em;padding:7px 4px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;">🖼 Gallery</button>
   <button onclick="document.getElementById('portraitCameraInput').click()" style="flex:1;min-width:80px;font-size:0.7em;padding:7px 4px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;">📷 Camera</button>
@@ -3593,6 +3601,18 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <button type="button" id="photoFitFillBtn" onclick="setPhotoFit('fill')" style="flex:1; font-size:0.7em; padding:6px 4px; background:var(--primary); color:#fff; border:1px solid var(--primary); border-radius:6px; font-weight:bold;">Fill frame</button>
 <button type="button" id="photoFitFitBtn" onclick="setPhotoFit('fit')" style="flex:1; font-size:0.7em; padding:6px 4px; background:var(--bg-inset); border:1px solid var(--border); border-radius:6px;">Fit whole image</button>
 </div>
+</div>
+<div id="photoPosRow" style="margin-top:8px;">
+<div style="font-size:0.68em; font-weight:bold; color:var(--text-label); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Photo Position</div>
+<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+<span style="font-size:0.66em; color:var(--text-label); width:52px; flex-shrink:0;">Horizontal</span>
+<input type="range" id="photoPosXSlider" min="0" max="100" step="1" value="50" oninput="setPhotoPos('x', this.value)" style="flex:1; min-width:0; padding:0;">
+</div>
+<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+<span style="font-size:0.66em; color:var(--text-label); width:52px; flex-shrink:0;">Vertical</span>
+<input type="range" id="photoPosYSlider" min="0" max="100" step="1" value="50" oninput="setPhotoPos('y', this.value)" style="flex:1; min-width:0; padding:0;">
+</div>
+<button type="button" id="photoPosCenterBtn" onclick="centerPhotoPos()" style="width:100%; font-size:0.7em; padding:6px 4px; background:var(--bg-inset); border:1px solid var(--border); border-radius:6px;">Center</button>
 </div>
 </div>
 <!-- Action Photo -->
@@ -8696,18 +8716,22 @@ function cardRender(hero, done) {
         x.beginPath(); x.rect(ax, ay, aw, ah); x.clip();
         if (img) {
             var ir = img.width / img.height, r = aw / ah, sw, sh, sxx, syy;
+            // Position within the slack: hero.photoPosX/photoPosY percent
+            // (50 = centered, the classic behavior).
+            var pfx = _normPhotoPos(hero.photoPosX) / 100, pfy = _normPhotoPos(hero.photoPosY) / 100;
             if (hero.photoFit === 'fit') {
-                // Fit: whole image visible, centered, letterboxed over the
-                // art-zone backing color.
+                // Fit: whole image visible, letterboxed over the art-zone
+                // backing color, placed at pos% of the leftover space.
                 x.fillStyle = '#141b2c'; x.fillRect(ax, ay, aw, ah);
                 var fw, fh;
                 if (ir > r) { fw = aw; fh = aw / ir; }
                 else { fh = ah; fw = ah * ir; }
-                x.drawImage(img, ax + (aw - fw) / 2, ay + (ah - fh) / 2, fw, fh);
+                x.drawImage(img, ax + (aw - fw) * pfx, ay + (ah - fh) * pfy, fw, fh);
             } else {
-                // Fill (default): cover the art zone with a centered crop.
-                if (ir > r) { sh = img.height; sw = sh * r; sxx = (img.width - sw) / 2; syy = 0; }
-                else { sw = img.width; sh = sw / r; sxx = 0; syy = (img.height - sh) / 2; }
+                // Fill (default): cover the art zone; the crop window sits
+                // at pos% of the source slack on each axis.
+                if (ir > r) { sh = img.height; sw = sh * r; sxx = (img.width - sw) * pfx; syy = 0; }
+                else { sw = img.width; sh = sw / r; sxx = 0; syy = (img.height - sh) * pfy; }
                 x.drawImage(img, sxx, syy, sw, sh, ax, ay, aw, ah);
             }
             var grd = x.createLinearGradient(0, ay + ah - 180, 0, ay + ah);
@@ -14899,6 +14923,9 @@ function _doResetSheet() {
     window._bpLinkShared = false;
     if (typeof bpRenderLinkField === "function") { try { bpRenderLinkField(); } catch(e) {} }
     clearPortrait();
+    currentPhotoPosX = 50;
+    currentPhotoPosY = 50;
+    setPhotoPos();
     setPhotoFit('fill');
     currentActionPhotoIncludeInExport = true;
     clearActionPhoto();
@@ -15153,6 +15180,8 @@ function collectHero() {
         portrait:   currentPortrait || "",
         portraitRatio: currentPortraitRatio || 0,
         photoFit:   currentPhotoFit === 'fit' ? 'fit' : 'fill',
+        photoPosX:  _normPhotoPos(currentPhotoPosX),
+        photoPosY:  _normPhotoPos(currentPhotoPosY),
         actionPhoto: currentActionPhoto || "",
         actionPhotoRatio: currentActionPhotoRatio || 0,
         actionPhotoIncludeInExport: currentActionPhotoIncludeInExport !== false,
@@ -15366,6 +15395,9 @@ function applyHero(hero) {
     charPNotes   = hero.powerNotes ? {...hero.powerNotes} : {};
     currentEditingVaultId = hero.vaultId || "";
     if (typeof bpRenderLinkField === "function") { try { bpRenderLinkField(); } catch(e) {} }
+    currentPhotoPosX = _normPhotoPos(hero.photoPosX);
+    currentPhotoPosY = _normPhotoPos(hero.photoPosY);
+    setPhotoPos();
     setPhotoFit(hero.photoFit === 'fit' ? 'fit' : 'fill');
     if(hero.portrait) setPortrait(hero.portrait, hero.portraitRatio);
     else clearPortrait();
@@ -18909,35 +18941,43 @@ function _pdfImageFormat(dataUrl) {
 // stretching the source to exactly fit w×h, which distorts non-matching
 // aspect ratios. Falls back to a plain stretch if the ratio is unknown or
 // this jsPDF build doesn't support clipping.
-function _pdfFitRect(ratio, x, y, w, h) {
-    // Contain: largest rect of aspect `ratio` that fits inside (x,y,w,h), centered.
+function _pdfFitRect(ratio, x, y, w, h, posX, posY) {
+    // Contain: largest rect of aspect `ratio` that fits inside (x,y,w,h),
+    // placed at fraction posX/posY of the leftover space on each axis
+    // (0.5 = centered, the default; 0 = top/left, 1 = bottom/right).
     if (!ratio || !isFinite(ratio) || ratio <= 0) return {x:x, y:y, w:w, h:h};
+    const fx = (typeof posX === 'number' && isFinite(posX)) ? posX : 0.5;
+    const fy = (typeof posY === 'number' && isFinite(posY)) ? posY : 0.5;
     const boxRatio = w / h;
     let dw, dh;
     if (ratio > boxRatio) { dw = w; dh = w / ratio; }
     else { dh = h; dw = h * ratio; }
-    return {x: x + (w - dw) / 2, y: y + (h - dh) / 2, w: dw, h: dh};
+    return {x: x + (w - dw) * fx, y: y + (h - dh) * fy, w: dw, h: dh};
 }
-function _pdfDrawFitImage(doc, dataUrl, ratio, x, y, w, h) {
-    const r = _pdfFitRect(ratio, x, y, w, h);
+function _pdfDrawFitImage(doc, dataUrl, ratio, x, y, w, h, posX, posY) {
+    const r = _pdfFitRect(ratio, x, y, w, h, posX, posY);
     const fmt = _pdfImageFormat(dataUrl);
     try { doc.addImage(dataUrl, fmt, r.x, r.y, r.w, r.h, '', 'FAST'); } catch(e) {}
     return r;
 }
-function _pdfDrawCoverImage(doc, dataUrl, ratio, x, y, w, h) {
+function _pdfDrawCoverImage(doc, dataUrl, ratio, x, y, w, h, posX, posY) {
     const fmt = _pdfImageFormat(dataUrl);
     if (!ratio || !isFinite(ratio) || ratio <= 0) {
         doc.addImage(dataUrl, fmt, x, y, w, h, '', 'FAST');
         return;
     }
+    // Crop window sits at fraction posX/posY of the overflow slack on
+    // each axis (0.5 = centered, the default).
+    const fx = (typeof posX === 'number' && isFinite(posX)) ? posX : 0.5;
+    const fy = (typeof posY === 'number' && isFinite(posY)) ? posY : 0.5;
     const boxRatio = w / h;
     let dw, dh, dx, dy;
     if (ratio > boxRatio) {
         dh = h; dw = h * ratio;
-        dx = x - (dw - w) / 2; dy = y;
+        dx = x - (dw - w) * fx; dy = y;
     } else {
         dw = w; dh = w / ratio;
-        dx = x; dy = y - (dh - h) / 2;
+        dx = x; dy = y - (dh - h) * fy;
     }
     let clipped = false;
     try {
@@ -19046,15 +19086,17 @@ async function exportCharacterPDF(layout='standard') {
         doc.triangle(W*0.52, 0,  W*0.58, 0,  W*0.45, HEADER_H, 'F');
 
         // Portrait bled into header (top-left) — placed per hero.photoFit:
-        // 'fill' (default) covers the strip, centered, cropping overflow;
-        // 'fit' shows the whole image, centered, letterboxed against the
-        // header art. (Was a raw addImage stretch to 56×HEADER_H, which
-        // distorted any photo that didn't match that exact aspect.)
+        // 'fill' (default) covers the strip, cropping overflow; 'fit' shows
+        // the whole image, letterboxed against the header art. Position
+        // within the slack follows hero.photoPosX/photoPosY (50 = centered).
+        // (Was a raw addImage stretch to 56×HEADER_H, which distorted any
+        // photo that didn't match that exact aspect.)
         const PW = hero.portrait ? 56 : 0;
         if(hero.portrait) {
             try {
-                if (hero.photoFit === 'fit') _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H);
-                else _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H);
+                const _ppx = _normPhotoPos(hero.photoPosX) / 100, _ppy = _normPhotoPos(hero.photoPosY) / 100;
+                if (hero.photoFit === 'fit') _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H, _ppx, _ppy);
+                else _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, 0, 0, PW, HEADER_H, _ppx, _ppy);
                 // edge highlight
                 stroke(T.gold); doc.setLineWidth(1.5);
                 doc.line(PW, 0, PW, HEADER_H);
@@ -19822,9 +19864,10 @@ async function exportCharacterPDF(layout='standard') {
 
         // Showcase layout: large portrait beneath tags in right column.
         // Placement honors hero.photoFit: 'fill' (default) COVERS the frame,
-        // centered, cropping overflow — no dead space, and the name bar sits
-        // at the bottom of the frame. 'fit' shows the whole image, centered
-        // and letterboxed in the frame, and the name bar hugs the photo.
+        // cropping overflow — no dead space, and the name bar sits at the
+        // bottom of the frame. 'fit' shows the whole image, letterboxed in
+        // the frame, and the name bar hugs the photo. Position within the
+        // slack follows hero.photoPosX/photoPosY (50 = centered).
         if(layout === 'showcase' && hero.portrait) {
             const portraitAvail = CONTENT_BOTTOM - yR - 4;
             if(portraitAvail > 40) {
@@ -19835,10 +19878,11 @@ async function exportCharacterPDF(layout='standard') {
                 fill(T.panel); rect(rightX, yR, pw, ph, 3);
                 let imgOk = false, fitR = null;
                 try {
+                    const _spx = _normPhotoPos(hero.photoPosX) / 100, _spy = _normPhotoPos(hero.photoPosY) / 100;
                     if (hero.photoFit === 'fit') {
-                        fitR = _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph);
+                        fitR = _pdfDrawFitImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph, _spx, _spy);
                     } else {
-                        _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph);
+                        _pdfDrawCoverImage(doc, hero.portrait, hero.portraitRatio, rightX, yR, pw, ph, _spx, _spy);
                         fitR = {x: rightX, y: yR, w: pw, h: ph};
                     }
                     imgOk = true;
@@ -20414,6 +20458,22 @@ let currentPortraitRatio = 0;
 // value other than 'fit' — including heroes saved before this setting
 // existed — behaves as 'fill'.
 let currentPhotoFit = 'fill';
+// Where the portrait sits inside its frame on exports, as a percentage
+// (0–100) of the available slack on each axis: 50 = centered (the classic
+// behavior), 0 = top/left edge of the slack, 100 = bottom/right edge.
+// Applies to the cover crop window in 'fill' mode and to the letterbox
+// placement in 'fit' mode. Stored per hero as hero.photoPosX/photoPosY;
+// heroes saved before this setting existed behave as 50/50.
+let currentPhotoPosX = 50;
+let currentPhotoPosY = 50;
+
+// Normalizes a stored photo-position value to an integer 0–100; anything
+// missing or non-numeric becomes 50 (centered).
+function _normPhotoPos(v) {
+    const n = (typeof v === 'number') ? v : parseFloat(v);
+    if (!isFinite(n)) return 50;
+    return Math.min(100, Math.max(0, Math.round(n)));
+}
 // Tracks the vaultId of whichever saved character is currently loaded in the
 // editor, so saving/overwriting reuses the same IndexedDB portrait record
 // instead of creating (and orphaning) a new one every time.
@@ -20462,7 +20522,10 @@ function setPortrait(dataUrl, ratio) {
 function setPhotoFit(mode) {
     currentPhotoFit = (mode === 'fit') ? 'fit' : 'fill';
     const img = document.getElementById("portraitImg");
-    if (img) img.style.objectFit = (currentPhotoFit === 'fit') ? 'contain' : 'cover';
+    if (img) {
+        img.style.objectFit = (currentPhotoFit === 'fit') ? 'contain' : 'cover';
+        img.style.objectPosition = currentPhotoPosX + '% ' + currentPhotoPosY + '%';
+    }
     const fillBtn = document.getElementById("photoFitFillBtn");
     const fitBtn  = document.getElementById("photoFitFitBtn");
     if (fillBtn && fitBtn) {
@@ -20475,6 +20538,29 @@ function setPhotoFit(mode) {
         paint(fillBtn, currentPhotoFit === 'fill');
         paint(fitBtn,  currentPhotoFit === 'fit');
     }
+}
+
+// Sets one axis of the portrait's in-frame position (0–100, 50 = centered),
+// syncs the Bio sliders, and updates the on-screen preview's
+// object-position — CSS object-position percentages use the same
+// slack × pos/100 math as the export renderers, so the preview matches
+// the PDF. Called with no arguments it just re-syncs the UI from the
+// current globals (used when loading a hero).
+function setPhotoPos(axis, value) {
+    if (axis === 'x') currentPhotoPosX = _normPhotoPos(value);
+    if (axis === 'y') currentPhotoPosY = _normPhotoPos(value);
+    const sx = document.getElementById("photoPosXSlider");
+    const sy = document.getElementById("photoPosYSlider");
+    if (sx) sx.value = currentPhotoPosX;
+    if (sy) sy.value = currentPhotoPosY;
+    const img = document.getElementById("portraitImg");
+    if (img) img.style.objectPosition = currentPhotoPosX + '% ' + currentPhotoPosY + '%';
+}
+
+// Snaps the portrait position back to centered (50/50) on both axes.
+function centerPhotoPos() {
+    setPhotoPos('x', 50);
+    setPhotoPos('y', 50);
 }
 
 function clearPortrait() {
@@ -28702,19 +28788,22 @@ window.generateRandomNPC = generateRandomNPC;
         ctx.clip();
         if (portraitImg && portraitImg.src && portraitImg.style.display !== 'none') {
             try {
-                // Honor the hero's photo fit: 'fill' (default) cover-crops the
-                // square, centered; 'fit' letterboxes the whole image,
-                // centered. (Was a plain stretch into the square.)
+                // Honor the hero's photo fit: 'fill' (default) cover-crops
+                // the square; 'fit' letterboxes the whole image. Position
+                // within the slack follows the current photo position
+                // (50/50 = centered). (Was a plain stretch into the square.)
                 var scIw = portraitImg.naturalWidth || 0, scIh = portraitImg.naturalHeight || 0;
+                var scFx = (typeof currentPhotoPosX !== 'undefined') ? _normPhotoPos(currentPhotoPosX) / 100 : 0.5;
+                var scFy = (typeof currentPhotoPosY !== 'undefined') ? _normPhotoPos(currentPhotoPosY) / 100 : 0.5;
                 if (scIw > 0 && scIh > 0 && typeof currentPhotoFit !== 'undefined' && currentPhotoFit === 'fit') {
                     ctx.fillStyle = '#1a1f2e'; ctx.fillRect(px, py, pw, ph);
                     var scFitScale = Math.min(pw / scIw, ph / scIh);
                     var scDw = scIw * scFitScale, scDh = scIh * scFitScale;
-                    ctx.drawImage(portraitImg, px + (pw - scDw) / 2, py + (ph - scDh) / 2, scDw, scDh);
+                    ctx.drawImage(portraitImg, px + (pw - scDw) * scFx, py + (ph - scDh) * scFy, scDw, scDh);
                 } else if (scIw > 0 && scIh > 0) {
                     var scCovScale = Math.max(pw / scIw, ph / scIh);
                     var scSw = pw / scCovScale, scSh = ph / scCovScale;
-                    ctx.drawImage(portraitImg, (scIw - scSw) / 2, (scIh - scSh) / 2, scSw, scSh, px, py, pw, ph);
+                    ctx.drawImage(portraitImg, (scIw - scSw) * scFx, (scIh - scSh) * scFy, scSw, scSh, px, py, pw, ph);
                 } else {
                     ctx.drawImage(portraitImg, px, py, pw, ph);
                 }
