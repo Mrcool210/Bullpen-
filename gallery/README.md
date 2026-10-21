@@ -5,14 +5,13 @@ A community character gallery for the Bullpen. Users browse it in the app's Comm
 ## How it works
 
 1. In the Bullpen, a user picks a hero and hits "Submit to Community Vault". The app opens a pre-filled GitHub issue (label vault-submission) containing their BPCH1- character code.
-2. Ben reviews the issue. If the character is approved, he adds the vault-approved label.
-3. The Community Vault intake GitHub Action validates the code with the same checks the app uses, publishes it to gallery/, and closes the issue.
-4. The app fetches gallery/index.json from GitHub Pages / raw and caches it for offline use.
+2. The moment the issue opens, the Community Vault intake GitHub Action validates the code with the same checks the app uses. Valid submissions are published to gallery/ automatically and the issue is closed; blank or invalid submissions are rejected.
+3. The app fetches gallery/index.json from GitHub Pages / raw and caches it for offline use.
 
-Nothing is published without Ben's approval — the label is the moderation gate.
+Submissions go live automatically — there is no pre-publication review step.
 
-## Ground rules (for Ben's moderation)
+## Ground rules
 
 - Original characters only. No stat blocks copied from Marvel books, and no uploading book text.
-- No personal info in bios — reject anything with real names, addresses, or contact details.
-- The intake Action validates the code's structure, not its taste. Ben's label is the quality gate.
+- No personal info in bios — anything with real names, addresses, or contact details gets removed.
+- The intake Action validates the code's structure, not its taste. Moderation happens after publication: anything that breaks the rules is taken down.
