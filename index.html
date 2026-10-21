@@ -4819,6 +4819,11 @@ None — anyone can take this power
       <div id="combatScreenContent"><!-- combat section moved here by JS --><div class="bio-section" id="combatSection" style="margin-top:20px;">
 <h3>⚔ Combat Tracker</h3>
 
+<!-- FIGHT FLOW CHROME — phased flow (entry / setup / combat); panels filled & toggled by bpApplyFightPhase() -->
+<div id="fightEntryPanel" style="display:none; margin-bottom:16px;"></div>
+<div id="fightSetupBar" style="display:none; margin-bottom:16px;"></div>
+<div id="fightCombatBar" style="display:none; margin-bottom:12px;"></div>
+
 <!-- NARRATOR RESOURCES -->
 <div id="narratorResourcesPanel" style="background:var(--bg-inset);border:1px solid var(--border);border-left:4px solid #cc44ff;border-radius:8px;padding:12px;margin-bottom:16px;">
 <h3 style="margin-top:0;color:#cc44ff;">🎬 Narrator Resources</h3>
@@ -4827,9 +4832,9 @@ None — anyone can take this power
 </div>
 
 <!-- ROSTERS -->
-<div style="display:flex; flex-direction:column; gap:15px; margin-bottom:20px;">
+<div id="combatRostersWrap" style="display:flex; flex-direction:column; gap:15px; margin-bottom:20px;">
 <!-- HEROES ROSTER -->
-<div style="background:#1a1a1a; border:1px solid var(--shield-blue); border-radius:8px; padding:15px;">
+<div id="combatHeroRosterPanel" style="background:#1a1a1a; border:1px solid var(--shield-blue); border-radius:8px; padding:15px;">
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
 <h3 style="margin:0; border:none; padding:0; color:#44aaff;">🦸 Heroes Roster</h3>
 <span style="font-size:0.75em; color:#666;">From your Hero Vault</span>
@@ -4839,7 +4844,7 @@ None — anyone can take this power
 </div>
 </div>
 <!-- NARRATOR ROSTER -->
-<div style="background:#1a1a1a; border:1px solid #7700aa; border-radius:8px; padding:15px;">
+<div id="combatNarratorRosterPanel" style="background:#1a1a1a; border:1px solid #7700aa; border-radius:8px; padding:15px;">
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
 <h3 style="margin:0; border:none; padding:0; color:#cc44ff;">🎭 Narrator's Roster</h3>
 <button onclick="openNarratorModal()" style="width:auto; padding:6px 12px; font-size:0.8em; background:#7700aa;">+ Add Quick NPC</button>
@@ -4850,7 +4855,7 @@ None — anyone can take this power
 </div>
 </div>
 <!-- ACTIVE COMBAT -->
-<div style="background:#0d0d0d; border:1px solid var(--shield-border); border-radius:8px; padding:15px;">
+<div id="combatActivePanel" style="background:#0d0d0d; border:1px solid var(--shield-border); border-radius:8px; padding:15px;">
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
 <h3 style="margin:0; border:none; padding:0;">⚔ Active Combat</h3>
 <button onclick="toggleCombatActionsPanel()" title="Combat rules (Spider-Verse &amp; Avengers Expansions): Disarm, Taunt, Ultimate Fantastic initiative" style="width:auto; padding:8px 14px; font-size:0.82em; background:#3a2a00; border:1px solid #aa7711; border-radius:5px; color:#ffcc66; cursor:pointer;">📖 Actions</button>
@@ -16967,6 +16972,7 @@ let mainOrder  = [];       // UIDs sorted for main combat (all)
 let bonusTurn  = 0;
 let mainTurn   = 0;
 let combatPlot = 0, combatKarma = 0, combatRound = 1; // 2.8.12 narrator pools + manual round tracker
+let fightUiPhase = 'entry'; // 2.9 fight-flow UI phase: 'entry' | 'setup-heroes' | 'setup-narrator' | 'combat' (UI layer only; combatPhase above is the fight engine's state)
 
 // ---- Narrator roster ----
 function getNarratorRoster() {
@@ -17158,6 +17164,19 @@ function confirmAddToCombat() {
 
     closeQuantityModal();
     renderActiveCombat();
+    if(typeof bpRenderStagedStrip === 'function') bpRenderStagedStrip();
+}
+
+// Back-fill a vaultId for a data object that was copied from a vault hero
+// but lost the field (legacy encounter saves, snapshots). Only an
+// unambiguous name match counts — two vault heroes sharing a name means we
+// cannot know which one this was, so the combatant stays unlinked.
+function _bpMatchVaultIdByName(name) {
+    if(!name || typeof getVault !== 'function') return null;
+    try {
+        const m = getVault().filter(function(h){ return h && h.vaultId && (h.heroName || h.realName || h.name) === name; });
+        return m.length === 1 ? m[0].vaultId : null;
+    } catch(e) { return null; }
 }
 
 // Push one data object into the active fight `qty` times. Shared by the
@@ -17182,7 +17201,7 @@ function _pushCombatantFromData(data, side, qty) {
 
         combatants.push({
             uid: Date.now() + "_" + Math.random().toString(36).slice(2),
-            vaultId: data.vaultId || null,
+            vaultId: data.vaultId || _bpMatchVaultIdByName(baseName),
             baseName,
             label,
             side: side,
@@ -17713,16 +17732,7 @@ function renderCombatCard(c, idx, isActive, phase) {
             </button>
         </div>
 
-        ${c.vaultId ? `
-        <div style="margin-top:6px;">
-            <button onclick="bpCombatTransformSwap('${safeUid}')"
-                style="width:100%; padding:7px 6px; font-size:0.78em; font-weight:bold; background:#2a1a3a; border:1px solid #6a3aaa; border-radius:5px; color:#cc99ff; cursor:pointer;">
-                &#x1F504; Transform
-            </button>
-            <div id="transformPicker_${safeUid}" style="display:none; margin-top:6px;"></div>
-            <div id="transformNotice_${safeUid}" style="display:none; margin-top:6px; font-size:0.75em; color:#ffcc88; line-height:1.4;"></div>
-            ${_bpRevertBtnHtml(c, safeUid)}
-        </div>` : ''}
+        ${_bpTransformBlockHtml(c, safeUid)}
 
         ${renderConditionControls(c.uid, c.conditions || [])}
 
@@ -17782,18 +17792,19 @@ function ccPrompt(safeUid, resource, direction) {
 
 
 
-// ── Mid-combat transformation swap ─────────────────────────────────────────
-// Swaps a combatant in place to a transformed vault version of the same hero.
-// Damage carries over as damage: new pool minus what's already been taken.
-function bpCombatTransformSwap(safeUid) {
-    const c = (typeof _findBySafeUid === "function") ? _findBySafeUid(safeUid) : null;
-    if(!c || !c.vaultId) return;
-    const noticeEl = document.getElementById("transformNotice_" + safeUid);
-    const pickerEl = document.getElementById("transformPicker_" + safeUid);
-    const say = function(msg) {
-        if(noticeEl) { noticeEl.style.display = "block"; noticeEl.innerHTML = msg; }
-        if(pickerEl) pickerEl.style.display = "none";
-    };
+// ── Swap candidates (shared) ───────────────────────────────────────────────
+// Computes a combatant's swap candidates: transformed vault forms plus a
+// linked partner (2.9). Used by bpCombatTransformSwap for its picker AND by
+// the card renderers to decide whether the Transform button exists at all:
+// the button shows whenever at least one candidate exists — even if every
+// candidate is blocked (the picker/notice explains why). Zero candidates
+// means no button. This logic previously lived inline in
+// bpCombatTransformSwap and the renderers gated on vaultId alone, which hid
+// the button entirely on lobby tracker cards (renderCombatant never had
+// the block) and showed it for vault heroes with nothing to swap to.
+function bpCombatSwapCandidates(c) {
+    const out = { cands: [], staleLink: false };
+    if(!c || !c.vaultId) return out;
     let vault = [];
     try { vault = (typeof getVault === "function") ? getVault() : []; } catch(e) { vault = []; }
     // Primary: transformation records pointing back at this combatant's source sheet.
@@ -17835,6 +17846,50 @@ function bpCombatTransformSwap(safeUid) {
             return o && o !== c && o.vaultId && o.vaultId === x.hero.vaultId;
         });
     });
+    out.cands = cands;
+    out.staleLink = staleLink;
+    return out;
+}
+
+// True when the Transform/Revert block belongs on this combatant's card:
+// at least one swap candidate (blocked counts — the picker says why), or a
+// Revert target (the combatant is currently in a transformed form).
+function bpCombatHasSwapOptions(c) {
+    if(!c || !c.vaultId) return false;
+    if(bpCombatSwapCandidates(c).cands.length > 0) return true;
+    return (typeof _bpRevertTarget === "function") ? !!_bpRevertTarget(c) : false;
+}
+
+// The Transform button + inline picker/notice + Revert button, shared by
+// BOTH card renderers (lobby tracker cards via renderCombatant, and the
+// bonus/main combat cards via renderCombatCard).
+function _bpTransformBlockHtml(c, safeUid) {
+    if(!bpCombatHasSwapOptions(c)) return '';
+    return '<div style="margin-top:6px;">'
+        + '<button onclick="bpCombatTransformSwap(\'' + safeUid + '\')" '
+        + 'style="width:100%; padding:7px 6px; font-size:0.78em; font-weight:bold; background:#2a1a3a; border:1px solid #6a3aaa; border-radius:5px; color:#cc99ff; cursor:pointer;">'
+        + '&#x1F504; Transform</button>'
+        + '<div id="transformPicker_' + safeUid + '" style="display:none; margin-top:6px;"></div>'
+        + '<div id="transformNotice_' + safeUid + '" style="display:none; margin-top:6px; font-size:0.75em; color:#ffcc88; line-height:1.4;"></div>'
+        + _bpRevertBtnHtml(c, safeUid)
+        + '</div>';
+}
+
+// ── Mid-combat transformation swap ─────────────────────────────────────────
+// Swaps a combatant in place to a transformed vault version of the same hero.
+// Damage carries over as damage: new pool minus what's already been taken.
+function bpCombatTransformSwap(safeUid) {
+    const c = (typeof _findBySafeUid === "function") ? _findBySafeUid(safeUid) : null;
+    if(!c || !c.vaultId) return;
+    const noticeEl = document.getElementById("transformNotice_" + safeUid);
+    const pickerEl = document.getElementById("transformPicker_" + safeUid);
+    const say = function(msg) {
+        if(noticeEl) { noticeEl.style.display = "block"; noticeEl.innerHTML = msg; }
+        if(pickerEl) pickerEl.style.display = "none";
+    };
+    const _swapInfo = bpCombatSwapCandidates(c);
+    const cands = _swapInfo.cands;
+    const staleLink = _swapInfo.staleLink;
     if(cands.length === 0) {
         if(staleLink) {
             say("This character's linked form is no longer in the vault. Clear or re-make the link from the Linked Form field on the Bio tab.");
@@ -18033,6 +18088,199 @@ function renderCombatPools() {
         + '<button onclick="bpNextRound()" style="' + btn + '">⏭ Next round</button>';
 }
 
+// ── 2.9 Fight flow phases (declutter) ──────────────────────────────────────
+// A UI layer over the fight engine: fightUiPhase decides WHICH panels of the
+// Fight screen are visible; the engine's own combatPhase (lobby / initiative
+// / bonus / main) is untouched. Flow: 'entry' (new fight or load a saved
+// battle) → 'setup-heroes' → 'setup-narrator' (stage fighters, Save Battle,
+// Begin Combat) → 'combat' (only the combat UI). All panels are inline
+// document flow — no modals, no fixed positioning.
+function _bpFightEsc(s) { return (typeof _bpEsc === 'function') ? _bpEsc(s) : String(s == null ? '' : s); }
+
+function bpSetFightPhase(phase) {
+    fightUiPhase = phase;
+    bpApplyFightPhase();
+}
+
+function bpApplyFightPhase() {
+    const phase = (typeof fightUiPhase !== 'undefined') ? fightUiPhase : 'entry';
+    const show = function(id, on) { const el = document.getElementById(id); if(el) el.style.display = on ? '' : 'none'; };
+    const inEntry = phase === 'entry';
+    const inSH = phase === 'setup-heroes';
+    const inSN = phase === 'setup-narrator';
+    const inSetup = inSH || inSN;
+    const inCombat = phase === 'combat';
+    show('fightEntryPanel', inEntry);
+    show('fightSetupBar', inSetup);
+    show('fightCombatBar', inCombat);
+    show('narratorResourcesPanel', inCombat);
+    show('combatRostersWrap', inSetup);
+    show('combatHeroRosterPanel', inSH);
+    show('combatNarratorRosterPanel', inSN);
+    show('combatActivePanel', inCombat);
+    show('challengeHelperPanel', !inCombat);
+    if(inEntry) bpRenderFightEntry();
+    if(inSetup) bpRenderFightSetup();
+    if(inCombat) {
+        bpRenderFightCombatBar();
+        if(typeof renderActiveCombat === 'function') renderActiveCombat();
+    }
+}
+
+// Short roster summary for a saved battle: "Spider-Man, Vampire (LMD) ×4".
+function bpEncSummary(enc) {
+    const parts = [];
+    (enc.entries || []).forEach(function(e) {
+        const q = Math.max(1, parseInt(e.qty, 10) || 1);
+        let nm = e.name || null;
+        if(!nm && e.kind === 'vault' && typeof getVault === 'function') {
+            try { const h = getVault().find(function(x){ return x && x.vaultId === e.vaultId; }); if(h) nm = h.heroName || h.realName || h.name; } catch(err) {}
+        }
+        parts.push((nm || 'Fighter') + (q > 1 ? ' ×' + q : ''));
+    });
+    return parts.join(', ');
+}
+
+function bpRenderFightEntry() {
+    const el = document.getElementById('fightEntryPanel');
+    if(!el) return;
+    const list = (typeof bpGetEncounters === 'function') ? bpGetEncounters() : [];
+    const staged = (typeof combatants !== 'undefined') ? combatants.length : 0;
+    const btn = 'width:auto;padding:6px 12px;font-size:0.8em;border-radius:5px;cursor:pointer;';
+    let h = '<div style="background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:14px;">'
+        + '<div style="font-size:1.05em;font-weight:bold;letter-spacing:1px;margin-bottom:4px;">⚔ Start a Fight</div>'
+        + '<div style="font-size:0.8em;color:#888;margin-bottom:12px;">Build a new battle, or load one you saved earlier.</div>';
+    if(staged > 0) {
+        h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#141a10;border:1px solid #3a4a22;border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:0.82em;">'
+            + '<span style="flex:1;min-width:140px;">You have <strong>' + staged + ' fighter' + (staged === 1 ? '' : 's') + '</strong> staged.</span>'
+            + '<button onclick="bpSetFightPhase(\'setup-heroes\')" style="' + btn + 'background:#2a3a10;border:1px solid #5a7a22;color:#ccee99;">🧩 Resume Setup</button>'
+            + '<button onclick="bpSetFightPhase(\'combat\')" style="' + btn + 'background:#1a6600;border:1px solid #44aa44;color:#fff;">⚔ Go to Combat</button>'
+            + '</div>';
+    }
+    h += '<button onclick="bpSetFightPhase(\'setup-heroes\')" style="width:100%;padding:12px;font-size:0.95em;font-weight:bold;background:#1a6600;border:2px solid #44aa44;border-radius:8px;color:#fff;cursor:pointer;letter-spacing:1px;">🆕 NEW FIGHT</button>';
+    h += '<div style="font-size:0.78em;color:#888;text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;">📂 Load a Saved Battle</div>';
+    if(!list.length) {
+        h += '<div style="font-size:0.8em;color:#666;font-style:italic;">No saved battles yet. Build one with New Fight and use 💾 Save Battle during setup.</div>';
+    } else {
+        h += list.map(function(enc, i) {
+            const n = (enc.entries || []).reduce(function(a, e){ return a + (Math.max(1, parseInt(e.qty, 10) || 1)); }, 0);
+            const when = enc.savedAt ? new Date(enc.savedAt).toLocaleDateString() : '';
+            const kindLbl = enc.saveKind === 'prepared' ? '🎯 Prepared battle' : '💾 Saved roster';
+            const sum = bpEncSummary(enc);
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
+                + '<span style="flex:1;font-size:0.82em;"><strong>' + _bpFightEsc(enc.name || 'Untitled') + '</strong> <span style="color:#666;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span>'
+                + '<br><span style="font-size:0.85em;color:#999;">' + kindLbl + (when ? ' · ' + when : '') + ' · starts at full Health/Focus</span>'
+                + (sum ? '<br><span style="font-size:0.85em;color:#777;">' + _bpFightEsc(sum) + '</span>' : '')
+                + '</span>'
+                + '<button onclick="bpLoadEncounterAndFight(' + i + ')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#0a3a5a;border:1px solid #1a6a9a;border-radius:4px;color:#aad4ff;cursor:pointer;">Load</button>'
+                + '<button onclick="bpDeleteEncounterAndRefresh(' + i + ')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
+                + '</div>';
+        }).join('');
+    }
+    h += '</div>';
+    el.innerHTML = h;
+}
+
+function bpLoadEncounterAndFight(i) {
+    bpLoadEncounter(i);
+    bpSetFightPhase('combat');
+}
+
+function bpDeleteEncounterAndRefresh(i) {
+    const list = bpGetEncounters();
+    list.splice(i, 1);
+    bpSaveEncounters(list);
+    bpRenderEncounterList();
+    bpRenderFightEntry();
+}
+
+function bpRenderFightSetup() {
+    const el = document.getElementById('fightSetupBar');
+    if(!el) return;
+    const step2 = fightUiPhase === 'setup-narrator';
+    const btn = 'width:auto;padding:8px 14px;font-size:0.82em;border-radius:5px;cursor:pointer;';
+    el.innerHTML = '<div style="background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:12px;">'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">'
+        + '<span style="font-size:0.95em;font-weight:bold;letter-spacing:1px;">🧩 New Fight — ' + (step2 ? 'Step 2 of 2: Add Narrator Characters' : 'Step 1 of 2: Add Heroes') + '</span>'
+        + '<span style="flex:1;"></span>'
+        + (step2
+            ? '<button onclick="bpSetFightPhase(\'setup-heroes\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">← Back</button>'
+            : '<button onclick="bpSetFightPhase(\'entry\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">✖ Cancel</button>')
+        + '</div>'
+        + '<div id="fightStagedStrip" style="font-size:0.85em;margin-bottom:10px;"></div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'
+        + '<input id="fightSaveName" type="text" placeholder="Battle name…" style="flex:1;min-width:130px;padding:7px 10px;font-size:0.82em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
+        + '<button onclick="bpSaveBattleFromSetup()" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">💾 Save Battle</button>'
+        + (step2
+            ? '<button onclick="bpBeginCombat()" style="' + btn + 'font-weight:bold;background:#1a6600;border:1px solid #44aa44;color:#fff;">⚔ Begin Combat</button>'
+            : '<button onclick="bpSetFightPhase(\'setup-narrator\')" style="' + btn + 'font-weight:bold;background:#1a4488;border:1px solid #44aaff;color:#fff;">Next: Narrator Characters →</button>')
+        + '</div>'
+        + (step2 ? '' : '<div style="font-size:0.75em;color:#777;margin-top:8px;">Tip: you can Save Battle at either step, or skip the narrator step with Begin Combat there.</div>')
+        + '</div>';
+    bpRenderStagedStrip();
+}
+
+function bpRenderStagedStrip() {
+    const el = document.getElementById('fightStagedStrip');
+    if(!el) return;
+    if(!combatants.length) {
+        el.innerHTML = '<span style="color:#666;font-style:italic;">No fighters staged yet — use "+ To Fight" on the roster below.</span>';
+        return;
+    }
+    el.innerHTML = '<span style="color:#888;">In this fight:</span> ' + combatants.map(function(c) {
+        return '<span style="display:inline-flex;align-items:center;gap:4px;background:#1c1c1c;border:1px solid #333;border-left:3px solid ' + (c.side === 'hero' ? '#44aaff' : '#cc44ff') + ';border-radius:4px;padding:2px 4px 2px 8px;margin:2px;font-size:0.85em;">'
+            + _bpFightEsc(c.label)
+            + '<button onclick="bpRemoveStaged(\'' + c.uid + '\')" title="Remove" style="width:auto;min-width:0;padding:0 4px;margin:0;border:none;background:transparent;color:#f88;cursor:pointer;font-size:1em;">✕</button></span>';
+    }).join('')
+    + ' <button onclick="clearCombat(); bpRenderStagedStrip();" style="width:auto;padding:2px 8px;font-size:0.78em;background:#2a0d0d;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">Clear all</button>';
+}
+
+function bpRemoveStaged(uid) {
+    removeCombatant(uid);
+    bpRenderStagedStrip();
+}
+
+function bpSaveBattleFromSetup() {
+    const nameEl = document.getElementById('fightSaveName');
+    const name = (nameEl && nameEl.value.trim()) || ('Battle ' + new Date().toLocaleDateString());
+    if(bpSaveEncounterCore(name, 'prepared') && nameEl) nameEl.value = '';
+}
+
+function bpBeginCombat() {
+    if(!combatants.length) { if(typeof showNotice === 'function') showNotice('Add at least one fighter before starting combat.'); return; }
+    bpSetFightPhase('combat');
+}
+
+function bpRenderFightCombatBar() {
+    const el = document.getElementById('fightCombatBar');
+    if(!el) return;
+    const btn = 'width:auto;padding:7px 12px;font-size:0.8em;border-radius:5px;cursor:pointer;';
+    el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:8px 10px;">'
+        + '<span style="font-size:0.85em;font-weight:bold;letter-spacing:1px;">⚔ Combat</span>'
+        + '<span style="flex:1;"></span>'
+        + '<button onclick="bpSetupFromCombat()" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">⚙ Setup</button>'
+        + '<button onclick="bpEndFightToEntry()" style="' + btn + 'background:#3a0a0a;border:1px solid #6a1a1a;color:#ff9999;">🏁 End Fight</button>'
+        + '</div>';
+}
+
+// Back to setup mid-fight: the engine's endCombat() resets orders, pools,
+// round and used-power flags; the staged fighters (and any damage on them)
+// are kept so the battle can be adjusted, saved, and begun again.
+function bpSetupFromCombat() {
+    endCombat();
+    bpSetFightPhase('setup-heroes');
+}
+
+// End the fight and return to the entry panel. Same endCombat() reset; any
+// staged fighters remain staged, and the entry panel offers Resume Setup /
+// Go to Combat for them.
+function bpEndFightToEntry() {
+    endCombat();
+    bpSetFightPhase('entry');
+}
+
+window.addEventListener('DOMContentLoaded', function() { try { bpApplyFightPhase(); } catch(e) {} });
+
 // ---- Saved encounters ----
 var BP_ENC_KEY = 'bullpen_encounters_v1';
 function bpGetEncounters() { try { return JSON.parse(_lsGet(BP_ENC_KEY) || '[]'); } catch(e) { return []; } }
@@ -18048,9 +18296,18 @@ function bpEncountersHtml() {
         + '</div>';
 }
 function bpSaveEncounter() {
-    if(!combatants.length) { if(typeof showNotice === 'function') showNotice('No combatants to save.'); return; }
     const nameEl = document.getElementById('encNameInput');
     const name = (nameEl && nameEl.value.trim()) || ('Encounter ' + new Date().toLocaleDateString());
+    if(bpSaveEncounterCore(name, 'roster') && nameEl) nameEl.value = '';
+}
+// Shared save core. kind: 'prepared' = a battle set up in the Fight setup
+// flow, saved before combat; 'roster' = a roster snapshot saved from the
+// tracker (the pre-2.9 behavior — saves made before this field existed have
+// no kind and are treated as 'roster'). The format stores the ROSTER only
+// (never mid-fight HP/Focus), so every load starts at full Health/Focus;
+// the kind label just tells the user which workflow produced the save.
+function bpSaveEncounterCore(name, kind) {
+    if(!combatants.length) { if(typeof showNotice === 'function') showNotice('No combatants to save.'); return false; }
     const groups = [];
     combatants.forEach(function(c) {
         const key = c.vaultId ? 'v|' + c.vaultId : 'n|' + c.baseName + '|' + c.rank + '|' + (c.resilience || 0);
@@ -18065,16 +18322,17 @@ function bpSaveEncounter() {
         g.qty++;
     });
     const list = bpGetEncounters();
-    list.push({ name: name, savedAt: Date.now(), entries: groups.map(function(g){
+    list.push({ name: name, savedAt: Date.now(), saveKind: (kind === 'prepared' ? 'prepared' : 'roster'), entries: groups.map(function(g){
         const e = { kind: g.kind, qty: g.qty, side: g.side };
         if(g.kind === 'vault') e.vaultId = g.vaultId;
         else { e.name = g.name; e.rank = g.rank; e.res = g.res; e.vig = g.vig; e.notes = g.notes; }
         return e;
     }) });
     bpSaveEncounters(list);
-    if(nameEl) nameEl.value = '';
     if(typeof showNotice === 'function') showNotice('Saved "' + name + '" (' + combatants.length + ' combatants).');
     bpRenderEncounterList();
+    if(typeof bpRenderFightEntry === 'function') bpRenderFightEntry();
+    return true;
 }
 function bpToggleEncounterList() {
     const el = document.getElementById('encounterList');
@@ -18090,8 +18348,11 @@ function bpRenderEncounterList() {
     el.innerHTML = list.map(function(enc, i) {
         const n = (enc.entries || []).reduce(function(a, e){ return a + (Math.max(1, parseInt(e.qty, 10) || 1)); }, 0);
         const nm = (typeof _bpEsc === 'function') ? _bpEsc(enc.name || 'Untitled') : (enc.name || 'Untitled');
+        const when = enc.savedAt ? new Date(enc.savedAt).toLocaleDateString() : '';
+        const kindLbl = enc.saveKind === 'prepared' ? '🎯 Prepared battle' : '💾 Saved roster';
         return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
-            + '<span style="flex:1;font-size:0.82em;font-weight:bold;">' + nm + ' <span style="color:#666;font-weight:normal;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span></span>'
+            + '<span style="flex:1;font-size:0.82em;font-weight:bold;">' + nm + ' <span style="color:#666;font-weight:normal;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span>'
+            + '<br><span style="font-size:0.85em;color:#999;font-weight:normal;">' + kindLbl + (when ? ' · ' + when : '') + ' · starts at full Health/Focus</span></span>'
             + '<button onclick="bpLoadEncounter(' + i + ')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#0a3a5a;border:1px solid #1a6a9a;border-radius:4px;color:#aad4ff;cursor:pointer;">Load</button>'
             + '<button onclick="bpDeleteEncounter(' + i + ')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
             + '</div>';
@@ -18118,7 +18379,17 @@ function bpLoadEncounter(i) {
             if(!hero) { skipped++; return; }
             _pushCombatantFromData(hero, e.side || 'hero', qty); added += qty;
         } else {
-            _pushCombatantFromData({ heroName: e.name, rank: e.rank, resilience: e.res, vigilance: e.vig, notes: e.notes || '', tags: [], powers: [], traits: [] }, e.side || 'narrator', qty);
+            // Back-fill: a "narrator" entry whose name unambiguously matches
+            // a vault hero was almost certainly that hero — it was saved
+            // before its combatant carried a vaultId. Restore the real sheet
+            // so its powers, transforms and linked form come back with it.
+            let hero = null;
+            try {
+                const m = getVault().filter(function(h){ return h && h.vaultId && (h.heroName || h.realName || h.name) === e.name; });
+                if(m.length === 1) hero = m[0];
+            } catch(err) {}
+            if(hero) _pushCombatantFromData(hero, e.side || 'hero', qty);
+            else _pushCombatantFromData({ heroName: e.name, rank: e.rank, resilience: e.res, vigilance: e.vig, notes: e.notes || '', tags: [], powers: [], traits: [] }, e.side || 'narrator', qty);
             added += qty;
         }
     });
@@ -18234,6 +18505,7 @@ function togglePowersList(uid) {
 }
 
 function renderCombatant(c, accentColor) {
+    const safeUid = c.uid.replace(/[^a-z0-9_]/gi, '_');
     const hpPct   = Math.max(0, Math.round((c.currentHp / c.maxHp) * 100));
     const fpPct   = Math.max(0, Math.round((c.currentFp / c.maxFp) * 100));
     const hpColor = hpPct > 50 ? "#44ff88" : hpPct > 25 ? "#ffcc00" : "#ff4444";
@@ -18289,6 +18561,7 @@ function renderCombatant(c, accentColor) {
             <button onclick="resetCombatant('${c.uid}')" style="width:auto; padding:5px 10px; font-size:0.75em; flex:none;">↺ Reset</button>
         </div>
 
+        ${_bpTransformBlockHtml(c, safeUid)}
         ${renderConditionControls(c.uid, c.conditions || [])}
         ${renderCombatPowerSection(c)}
     </div>`;
@@ -29681,6 +29954,7 @@ window.appNavTo = function(screenId, isBack) {
   // Trigger combat render when entering combat
   if(screenId === 'combat') {
     try { if(typeof renderCombatRosters === 'function') renderCombatRosters(); } catch(e) {}
+    try { if(typeof bpApplyFightPhase === 'function') bpApplyFightPhase(); } catch(e) {}
   }
 
   // Try saving nav state
