@@ -5954,6 +5954,63 @@ Item is worn (ring, gauntlet, circlet, etc.) rather than carried — auto-adds a
         <button onclick="vaultOpenArmory()" style="flex:1;min-width:130px;background:#003344;border:1px solid #44ccff;color:#88eeff;font-size:0.82em;font-weight:bold;padding:10px 8px;border-radius:8px;cursor:pointer;">🦾 Armory<br><span style="font-weight:normal;font-size:0.85em;color:var(--text-sub);">Battle Suits</span></button>
         <button onclick="vaultOpenGarage()" style="flex:1;min-width:130px;background:#301a44;border:1px solid #9955cc;color:#ddaaff;font-size:0.82em;font-weight:bold;padding:10px 8px;border-radius:8px;cursor:pointer;">🚗 Garage<br><span style="font-weight:normal;font-size:0.85em;color:var(--text-sub);">Vehicles</span></button>
         <button onclick="vaultOpenDeeds()" style="flex:1;min-width:130px;background:#1a1a33;border:1px solid #6688cc;color:#aabbee;font-size:0.82em;font-weight:bold;padding:10px 8px;border-radius:8px;cursor:pointer;">🏢 Deeds<br><span style="font-weight:normal;font-size:0.85em;color:var(--text-sub);">HQs &amp; Stations</span></button>
+        <button onclick="bpToggleHenchmanPanel()" style="flex:1;min-width:130px;background:#2a1a2e;border:1px solid #9955aa;color:#ddaadd;font-size:0.82em;font-weight:bold;padding:10px 8px;border-radius:8px;cursor:pointer;">👥 Build a Henchman<br><span style="font-weight:normal;font-size:0.85em;color:var(--text-sub);">Rank 1–2 NPCs</span></button>
+      </div>
+      <div id="henchmanPanel" style="display:none;background:#14161c;border:1px solid #445577;border-radius:10px;padding:14px;margin-bottom:16px;">
+        <div style="font-weight:bold;color:#aaccff;font-size:0.95em;margin-bottom:4px;">👥 Build a Henchman</div>
+        <div style="font-size:0.8em;color:var(--text-sub);line-height:1.5;margin-bottom:12px;">Quick Rank 1–2 NPCs on the Secret Wars henchman pattern — minimal powers, full stats. Each build adds one hero to your vault; you can stage the same hero multiple times in a fight.</div>
+        <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Name</label>
+        <input type="text" id="hmName" placeholder="e.g. Vampire LMD (Henchman)" style="width:100%;box-sizing:border-box;padding:8px 10px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);margin-bottom:10px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <div style="flex:1;min-width:120px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Rank</label>
+            <select id="hmRank" onchange="bpHmPreview()" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);">
+              <option value="1">Rank 1</option>
+              <option value="2" selected>Rank 2</option>
+            </select>
+          </div>
+          <div style="flex:2;min-width:180px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Stat Template</label>
+            <select id="hmTemplate" onchange="bpHmPreview()" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);">
+              <option value="even">Even — flat spread</option>
+              <option value="brute">Brute — Melee / Resilience</option>
+              <option value="skirmisher">Skirmisher — Agility / Vigilance</option>
+            </select>
+          </div>
+        </div>
+        <div id="hmPreview" style="font-size:0.82em;color:#aaccff;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <div style="flex:1;min-width:160px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Power 1</label>
+            <select id="hmPower1" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);"></select>
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Power 2</label>
+            <select id="hmPower2" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);"></select>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <div style="flex:1;min-width:160px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Trait 1</label>
+            <select id="hmTrait1" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);"></select>
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Trait 2</label>
+            <select id="hmTrait2" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);"></select>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <div style="flex:1;min-width:160px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Tag 1</label>
+            <select id="hmTag1" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);"></select>
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <label style="display:block;font-size:0.75em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Tag 2</label>
+            <select id="hmTag2" style="width:100%;padding:8px;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-main);"></select>
+          </div>
+        </div>
+        <button onclick="bpBuildHenchman()" style="width:100%;padding:11px;border:none;border-radius:8px;background:#553366;color:#fff;font-weight:bold;cursor:pointer;">➕ Add Henchman to Vault</button>
+        <div id="hmResult" style="font-size:0.82em;margin-top:9px;min-height:1.2em;line-height:1.45;"></div>
       </div>
       <div id="vaultScreenContent"><!-- vault moved here by JS --></div>
 <div class="bio-section" id="toolsHeroVaultSection" style="margin-top:20px;">
@@ -15688,6 +15745,170 @@ function saveHero() {
     } else {
         showNotice(`"${hero.heroName || hero.realName || "Character"}" saved to Vault. No Heroic/Villainous tag — shown in both rosters.`);
     }
+}
+
+// ── Build a Henchman (Secret Wars henchman pattern, Rank 1–2) ────────────
+// Quick NPC builder on the Vault screen: name + rank + stat template + up to
+// 2 powers / 2 traits / 2 tags. One build adds ONE hero to the vault — combat
+// can stage the same hero multiple times, so there is deliberately no copies
+// count. Generated heroes use the verified minimal representation (blank
+// origin/occupation + freeMode + manualPowers) so nothing is granted on top
+// when the hero is loaded. Templates distribute exactly rank×5 points and
+// never exceed the rank+3 cap; stat order is [MEL, AGI, RES, VIG, EGO, LOG].
+const HM_TEMPLATES = {
+    even:       { 1: [1,1,1,1,1,0], 2: [2,2,2,2,2,0] },
+    brute:      { 1: [3,0,2,0,0,0], 2: [4,1,3,1,1,0] },
+    skirmisher: { 1: [0,3,0,2,0,0], 2: [2,4,1,3,0,0] }
+};
+const HM_STAT_KEYS = ["melee","agility","resilience","vigilance","ego","logic"];
+const HM_STAT_LABELS = ["MEL","AGI","RES","VIG","EGO","LOG"];
+
+function bpHmSelection() {
+    const rankRaw = parseInt((document.getElementById("hmRank") || {}).value);
+    const rank = (rankRaw === 1 || rankRaw === 2) ? rankRaw : 2;
+    const key = (document.getElementById("hmTemplate") || {}).value || "even";
+    const t = HM_TEMPLATES[key] || HM_TEMPLATES.even;
+    const arr = t[rank] || t[2];
+    const stats = {};
+    HM_STAT_KEYS.forEach((k, i) => { stats[k] = arr[i]; });
+    return { rank, stats, arr };
+}
+
+function bpHmPreview() {
+    const el = document.getElementById("hmPreview");
+    if (!el) return;
+    const { rank, arr } = bpHmSelection();
+    const total = arr.reduce((a, b) => a + b, 0);
+    el.textContent = HM_STAT_LABELS.map((l, i) => l + " " + arr[i]).join(" · ") +
+        " — " + total + " points (Rank " + rank + " budget: " + (rank * 5) + ")";
+}
+
+function bpHmPopulate() {
+    const fill = (id, data, custom) => {
+        const sel = document.getElementById(id);
+        if (!sel || sel.options.length > 1) return;
+        const names = new Set();
+        [data, custom].forEach(src => { if (src) Object.keys(src).forEach(n => names.add(n)); });
+        const none = document.createElement("option");
+        none.value = ""; none.textContent = "— None —";
+        sel.appendChild(none);
+        [...names].sort((a, b) => a.localeCompare(b)).forEach(n => {
+            const o = document.createElement("option");
+            o.value = n; o.textContent = n;
+            sel.appendChild(o);
+        });
+    };
+    const P  = (typeof powersData !== "undefined") ? powersData : (window.powersData || {});
+    const T  = (typeof traitsData !== "undefined") ? traitsData : (window.traitsData || {});
+    const G  = (typeof tagsData   !== "undefined") ? tagsData   : (window.tagsData   || {});
+    const cP = (typeof customPowersData !== "undefined") ? customPowersData : null;
+    const cT = (typeof customTraitsData !== "undefined") ? customTraitsData : null;
+    const cG = (typeof customTagsData   !== "undefined") ? customTagsData   : null;
+    fill("hmPower1", P, cP); fill("hmPower2", P, cP);
+    fill("hmTrait1", T, cT); fill("hmTrait2", T, cT);
+    fill("hmTag1", G, cG);   fill("hmTag2", G, cG);
+}
+
+function bpToggleHenchmanPanel() {
+    const p = document.getElementById("henchmanPanel");
+    if (!p) return;
+    const show = (p.style.display === "none" || !p.style.display);
+    p.style.display = show ? "block" : "none";
+    if (show) { bpHmPopulate(); bpHmPreview(); }
+}
+
+function bpBuildHenchman() {
+    const resultEl = document.getElementById("hmResult");
+    const say = (msg, ok) => {
+        if (!resultEl) return;
+        resultEl.textContent = msg;
+        resultEl.style.color = ok ? "#7fc97f" : "#ff9988";
+    };
+    const name = ((document.getElementById("hmName") || {}).value || "").trim();
+    if (!name) {
+        say("Give the henchman a name first.", false);
+        const n = document.getElementById("hmName");
+        if (n) n.focus();
+        return;
+    }
+    const pick = id => ((document.getElementById(id) || {}).value || "");
+    const uniq = list => [...new Set(list.filter(Boolean))];
+    const powers = uniq([pick("hmPower1"), pick("hmPower2")]);
+    const traits = uniq([pick("hmTrait1"), pick("hmTrait2")]);
+    const tags   = uniq([pick("hmTag1"),   pick("hmTag2")]);
+    const { rank, stats } = bpHmSelection();
+    const emptySrc = () => ({ origin: [], occupation: [], origin2: [], occupation2: [] });
+    const hero = {
+        heroName: name,
+        realName: "",
+        gender: "",
+        height: "",
+        weight: "",
+        size: "Average",
+        eyes: "",
+        hair: "",
+        distinguishingFeatures: "",
+        teams: "",
+        base: "",
+        rank: rank,
+        powerToTraitConversions: 0,
+        origin: "",
+        occupation: "",
+        origin2: "",
+        occupation2: "",
+        stats: stats,
+        powers: [...powers],
+        manualPowers: [...powers],
+        narrativePowers: [],
+        narrativeLimitations: [],
+        traits: [...traits],
+        stunts: [],
+        tags: [...tags],
+        traitNotes: {},
+        tagNotes: {},
+        powerNotes: {},
+        traitBonus: [],
+        tagBonus: [],
+        powerBonus: [],
+        traitSrc: emptySrc(),
+        tagSrc: emptySrc(),
+        powerSrc: emptySrc(),
+        powerUpgrades: {},
+        karma: 0,
+        spp: 0,
+        vaultId: (typeof newId === "function") ? newId("hero") : ("hero_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10)),
+        portrait: "",
+        portraitRatio: 0,
+        photoFit: "fill",
+        actionPhoto: "",
+        actionPhotoRatio: 0,
+        actionPhotoIncludeInExport: true,
+        biography: "",
+        personality: "",
+        freeMode: true,
+        powerSetChoices: {},
+        powerWeaponTypes: {},
+        powerElementTypes: {},
+        customPowersData: {},
+        customTraitsData: {},
+        customTagsData: {},
+        customOriginsData: {},
+        customOccupationsData: {},
+        iconicItemsData: {},
+        iconicItems: [],
+        iconicItemMode: {},
+        surprisingPowerUsedFor: [],
+        rankBuilds: {},
+        transformation: null,
+        linkedFormId: "",
+        linkSharedBody: false
+    };
+    const heroes = getVault();
+    heroes.push(hero);
+    saveVault(heroes);
+    if (typeof renderLibrary === "function") { try { renderLibrary(); } catch (e) {} }
+    say("Added \"" + name + "\" (Rank " + rank + ") to the vault — stage it as many times as you like in a fight.", true);
+    if (typeof showNotice === "function") { try { showNotice("👥 Added henchman \"" + name + "\" to the vault."); } catch (e) {} }
 }
 
 async function loadHero(i) {
