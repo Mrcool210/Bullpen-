@@ -13109,7 +13109,19 @@ function verifyCharacterIntegrity() {
 window.verifyCharacterIntegrity = verifyCharacterIntegrity;
 
 
+// Pending resolver for promise-style showConfirm calls (see showConfirm).
+// Every modal dismissal path — button, back-button (closeTopUi), backdrop, or
+// a new modal replacing this one — settles it as "No" so awaiting code can
+// never hang on a promise that nobody resolves.
+let _bpModalPromiseResolve = null;
+function _bpSettleModalPromise(val) {
+    const r = _bpModalPromiseResolve;
+    _bpModalPromiseResolve = null;
+    if (r) { try { r(val); } catch(e) {} }
+}
+
 function _openModal(icon, title, msg, buttons, canDismiss=false) {
+    _bpSettleModalPromise(false); // a new modal replaces any pending confirm -> dismissed
     document.getElementById('appModalIcon').textContent  = icon  || '';
     document.getElementById('appModalTitle').textContent = title || '';
     document.getElementById('appModalMsg').textContent   = msg   || '';
@@ -13137,6 +13149,11 @@ function _openModal(icon, title, msg, buttons, canDismiss=false) {
 
 function _closeModal() {
     document.getElementById('appModal').style.display = 'none';
+    // Promise-style confirm closed without a button (back button, backdrop):
+    // settle it as "No". Deferred + identity-guarded so a button's own action —
+    // which runs synchronously right after this in the click handler — wins.
+    const r = _bpModalPromiseResolve;
+    if (r) setTimeout(function(){ if (_bpModalPromiseResolve === r) _bpSettleModalPromise(false); }, 0);
 }
 
 /** showAlert(msg, title?, icon?) — dismissible info box */
@@ -13146,12 +13163,30 @@ function showAlert(msg, title, icon) {
     ], true);
 }
 
-/** showConfirm(msg, onYes, onNo?, title?, icon?, yesLabel?, noLabel?) */
+/** showConfirm(msg, onYes, onNo?, title?, icon?, yesLabel?, noLabel?)
+ *  Dual-mode:
+ *  - Callback style: pass a function as onYes (returns undefined, as before).
+ *  - Promise style: omit the callback — the 2nd argument may be an icon
+ *    string — and get a Promise<boolean>: true on Yes, false on No or on
+ *    ANY dismissal of the modal (see _bpSettleModalPromise). */
 function showConfirm(msg, onYes, onNo, title, icon, yesLabel, noLabel) {
-    _openModal(icon||'❓', title||'Confirm', msg, [
-        { label: yesLabel||'Yes', primary:true,  action: onYes },
-        { label: noLabel ||'No',  primary:false, action: onNo||null }
-    ], false);
+    if (typeof onYes === 'function') {
+        _openModal(icon||'❓', title||'Confirm', msg, [
+            { label: yesLabel||'Yes', primary:true,  action: onYes },
+            { label: noLabel ||'No',  primary:false, action: onNo||null }
+        ], false);
+        return;
+    }
+    const pIcon = (typeof onYes === 'string' && onYes) ? onYes : (icon||'❓');
+    return new Promise(function(resolve) {
+        _openModal(pIcon, title||'Confirm', msg, [
+            { label: yesLabel||'Yes', primary:true,  action: function(){ _bpSettleModalPromise(true); } },
+            { label: noLabel ||'No',  primary:false, action: function(){ _bpSettleModalPromise(false); } }
+        ], false);
+        // Installed AFTER _openModal: its entry-settle clears any previous
+        // pending confirm, and must not clear this one.
+        _bpModalPromiseResolve = function(val) { resolve(!!val); };
+    });
 }
 
 
