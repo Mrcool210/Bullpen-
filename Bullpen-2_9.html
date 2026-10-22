@@ -4835,9 +4835,12 @@ None — anyone can take this power
 <div id="combatRostersWrap" style="display:flex; flex-direction:column; gap:15px; margin-bottom:20px;">
 <!-- HEROES ROSTER -->
 <div id="combatHeroRosterPanel" style="background:#1a1a1a; border:1px solid var(--shield-blue); border-radius:8px; padding:15px;">
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap;">
 <h3 style="margin:0; border:none; padding:0; color:#44aaff;">🦸 Heroes Roster</h3>
+<div style="display:flex; gap:8px; align-items:center;">
 <span style="font-size:0.75em; color:#666;">From your Hero Vault</span>
+<button onclick="bpOpenAddTeamToFight('hero')" style="width:auto; padding:6px 12px; font-size:0.8em; background:#1a4488;">👥 Add Team…</button>
+</div>
 </div>
 <div id="combatHeroRoster" style="display:flex; flex-direction:column; gap:6px;">
 <p style="color:#555; font-style:italic; font-size:0.85em;">Save heroes to the Vault above to add them here.</p>
@@ -4845,9 +4848,12 @@ None — anyone can take this power
 </div>
 <!-- NARRATOR ROSTER -->
 <div id="combatNarratorRosterPanel" style="background:#1a1a1a; border:1px solid #7700aa; border-radius:8px; padding:15px;">
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap;">
 <h3 style="margin:0; border:none; padding:0; color:#cc44ff;">🎭 Narrator's Roster</h3>
+<div style="display:flex; gap:8px; align-items:center;">
+<button onclick="bpOpenAddTeamToFight('narrator')" style="width:auto; padding:6px 12px; font-size:0.8em; background:#550077;">👥 Add Team…</button>
 <button onclick="openNarratorModal()" style="width:auto; padding:6px 12px; font-size:0.8em; background:#7700aa;">+ Add Quick NPC</button>
+</div>
 </div>
 <div id="combatNarratorRoster" style="display:flex; flex-direction:column; gap:6px;">
 <p style="color:#555; font-style:italic; font-size:0.85em;">No narrator characters yet. Add some above.</p>
@@ -18208,6 +18214,7 @@ function bpRenderFightSetup() {
             : '<button onclick="bpSetFightPhase(\'entry\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">✖ Cancel</button>')
         + '</div>'
         + '<div id="fightStagedStrip" style="font-size:0.85em;margin-bottom:10px;"></div>'
+        + '<div id="fightAddNotice" style="display:none;font-size:0.82em;color:#cfe8a8;background:#16240f;border:1px solid #3a5a22;border-radius:5px;padding:6px 10px;margin-bottom:10px;"></div>'
         + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'
         + '<input id="fightSaveName" type="text" placeholder="Battle name…" style="flex:1;min-width:130px;padding:7px 10px;font-size:0.82em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
         + '<button onclick="bpSaveBattleFromSetup()" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">💾 Save Battle</button>'
@@ -18238,6 +18245,61 @@ function bpRenderStagedStrip() {
 function bpRemoveStaged(uid) {
     removeCombatant(uid);
     bpRenderStagedStrip();
+}
+
+// ---- Add a whole team to the fight ----
+// Membership comes from the vault organizer (window.bpGetTeamsWithMembers:
+// store assignments unioned with heroes' teams fields). Every member is
+// staged on the CURRENT step's side, whatever their own tags say — staging
+// a villain team as the heroes is the narrator's prerogative.
+function bpFightNotice(msg) {
+    const el = document.getElementById('fightAddNotice');
+    if(el) { el.textContent = msg || ''; el.style.display = msg ? '' : 'none'; }
+    else if(msg && typeof showNotice === 'function') showNotice(msg);
+}
+
+function bpOpenAddTeamToFight(side) {
+    const teams = (typeof window.bpGetTeamsWithMembers === 'function') ? window.bpGetTeamsWithMembers() : [];
+    window._bpFightTeamList = teams;
+    window._bpFightTeamSide = side || 'hero';
+    if(typeof _showPickerModal !== 'function') return;
+    if(!teams.length) {
+        _showPickerModal('Add a team to the fight:', '<div style="font-size:0.85em;color:#999;line-height:1.5;">No teams yet. Teams are made from a character\'s <strong>Add to Team</strong> button on the Vault screen.</div>');
+        return;
+    }
+    const btns = teams.map(function(t, i) {
+        const n = (t.members || []).length;
+        return '<button onclick="_closePickerModal(); bpAddTeamToFight(' + i + ')" style="text-align:left;width:100%;padding:8px 10px;background:var(--bg-inset);border:1px solid var(--border);color:var(--text-main);border-radius:5px;cursor:pointer;font-size:0.85em;">👥 '
+            + _bpFightEsc(t.name) + ' <span style="color:#888;">(' + n + ' member' + (n === 1 ? '' : 's') + ')</span></button>';
+    }).join('');
+    _showPickerModal(side === 'hero' ? 'Add a team — as Heroes:' : 'Add a team — as Narrator characters:', btns);
+}
+
+function bpAddTeamToFight(i) {
+    const teams = window._bpFightTeamList || [];
+    const t = teams[i];
+    if(!t) return;
+    const side = window._bpFightTeamSide || 'hero';
+    const members = t.members || [];
+    const stagedIds = new Set(combatants.map(function(c){ return c.vaultId; }).filter(Boolean));
+    let added = 0;
+    const skipped = [];
+    members.forEach(function(h) {
+        const nm = h.heroName || h.realName || h.name || 'Character';
+        if(h.vaultId && stagedIds.has(h.vaultId)) { skipped.push(nm); return; }
+        if(!h.vaultId && combatants.some(function(c){ return c.baseName === nm; })) { skipped.push(nm); return; }
+        _pushCombatantFromData(h, side, 1);
+        if(h.vaultId) stagedIds.add(h.vaultId);
+        added++;
+    });
+    renderActiveCombat();
+    if(typeof bpRenderStagedStrip === 'function') bpRenderStagedStrip();
+    let msg;
+    if(added > 0 && skipped.length) msg = 'Added ' + added + ' — ' + skipped.join(', ') + (skipped.length === 1 ? ' was' : ' were') + ' already in the fight.';
+    else if(added > 0) msg = 'Added ' + added + ' from ' + t.name + '.';
+    else if(!members.length) msg = 'No one added — ' + t.name + ' has no characters in the vault yet.';
+    else msg = 'No one added — everyone on ' + t.name + ' is already in the fight.';
+    bpFightNotice(msg);
 }
 
 function bpSaveBattleFromSetup() {
@@ -25979,6 +26041,59 @@ body.bp2-play-mode #bp2ControlCenter { box-shadow:0 0 22px var(--primary-glow); 
         return id;
     }
 
+    // ── Canonical team list ─────────────────────────────────────────────
+    // Teams and folders are ONE list: the store's entries. A hero belongs
+    // to a team either by assignment (assignments[heroId] → entry) or by
+    // the name appearing in the hero's comma-separated teams field (typed
+    // on the Bio tab, or brought in by an import/share — those may have no
+    // store entry yet). collectTeamsWithMembers() unions both sources,
+    // deduped case-insensitively, with each team's vault members attached.
+    function heroTeamNames(h, state) {
+        const out = [];
+        const seen = new Set();
+        const push = (n) => {
+            const clean = String(n || '').trim();
+            const key = clean.toLowerCase();
+            if(clean && !seen.has(key)) { seen.add(key); out.push(clean); }
+        };
+        String((h && h.teams) || '').split(',').forEach(n => push(n));
+        const fid = h && h.vaultId ? (state.assignments[h.vaultId] || '') : '';
+        if(fid) {
+            const f = state.folders.find(x => x.id === fid);
+            if(f) push(f.name);
+        }
+        return out;
+    }
+
+    function collectTeamsWithMembers() {
+        const state = getTeamState();
+        const heroes = (typeof getVault === 'function') ? (getVault() || []) : [];
+        const byKey = new Map();
+        const ensure = (name, folderId) => {
+            const clean = String(name || '').trim();
+            if(!clean) return null;
+            const key = clean.toLowerCase();
+            if(!byKey.has(key)) byKey.set(key, { name: clean, folderId: folderId || null, members: [] });
+            const t = byKey.get(key);
+            if(folderId && !t.folderId) t.folderId = folderId;
+            return t;
+        };
+        state.folders.forEach(f => ensure(f.name, f.id));
+        heroes.forEach(h => { if(h) String(h.teams || '').split(',').forEach(n => ensure(n, null)); });
+        heroes.forEach(h => {
+            if(!h) return;
+            heroTeamNames(h, state).forEach(n => {
+                const t = byKey.get(n.toLowerCase());
+                if(t) t.members.push(h);
+            });
+        });
+        return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Read by the Fight screen's "Add Team…" — the one canonical place that
+    // knows how team membership works.
+    window.bpGetTeamsWithMembers = function() { return collectTeamsWithMembers(); };
+
     window.openAddCurrentHeroToFolder = function() {
         ensureHeroIds(true);
         ensureTeamFolderUI();
@@ -26005,20 +26120,129 @@ body.bp2-play-mode #bp2ControlCenter { box-shadow:0 0 22px var(--primary-glow); 
         if(id) assignCurrentToFolderId(id, 'folder');
     };
 
-    window.addCurrentHeroToTeam = function() {
+    // The end state both team flows land in: the name joins the hero's teams
+    // field (input first, so the save below picks it up), then the store
+    // entry is created if needed and the hero is assigned to it.
+    function assignCurrentHeroToTeamNamed(teamName) {
+        const clean = String(teamName || '').trim();
+        if(!clean) return;
         const currentTeamsEl = document.getElementById('teams');
-        const existingTeams = currentTeamsEl ? String(currentTeamsEl.value || '').trim() : '';
-        const name = prompt('Team name to add this character to:', existingTeams.split(',').map(s => s.trim()).filter(Boolean)[0] || '');
-        const teamName = String(name || '').trim();
-        if(!teamName) return;
         if(currentTeamsEl) {
-            const parts = existingTeams ? existingTeams.split(',').map(s => s.trim()).filter(Boolean) : [];
-            if(!parts.some(t => t.toLowerCase() === teamName.toLowerCase())) parts.push(teamName);
+            const parts = String(currentTeamsEl.value || '').split(',').map(s => s.trim()).filter(Boolean);
+            if(!parts.some(t => t.toLowerCase() === clean.toLowerCase())) parts.push(clean);
             currentTeamsEl.value = parts.join(', ');
         }
-        const id = createFolderNamed(teamName);
+        const id = createFolderNamed(clean);
         if(id) assignCurrentToFolderId(id, 'team');
         try { if(typeof updateUI === 'function') updateUI(); } catch(e) {}
+    }
+
+    function bpTeamPickButtonHtml(t, i, mode) {
+        const count = `<span style="color:#888;">(${t.members.length} in vault)</span>`;
+        const base = 'text-align:left;width:100%;padding:8px 10px;border-radius:5px;cursor:pointer;font-size:0.85em;';
+        if(mode === 'exact') {
+            return `<button onclick="_closePickerModal(); bpTeamPickerPick(${i})" style="${base}background:#3a2f00;border:1px solid var(--accent-gold);color:var(--text-main);">👥 ${esc(t.name)} ${count} <span style="color:var(--accent-gold);font-size:0.85em;">— already a team, tap to add</span></button>`;
+        }
+        if(mode === 'dim') {
+            return `<button onclick="_closePickerModal(); bpTeamPickerPick(${i})" style="${base}background:var(--bg-inset);border:1px solid var(--border);color:var(--text-main);opacity:0.45;">👥 ${esc(t.name)} ${count}</button>`;
+        }
+        const hl = mode === 'match' ? 'border:1px solid var(--accent-gold);' : 'border:1px solid var(--border);';
+        return `<button onclick="_closePickerModal(); bpTeamPickerPick(${i})" style="${base}background:var(--bg-inset);${hl}color:var(--text-main);">👥 ${esc(t.name)} ${count}</button>`;
+    }
+
+    window.bpTeamPickerPick = function(i) {
+        const teams = window._bpTeamPickerTeams || [];
+        const t = teams[i];
+        if(t) assignCurrentHeroToTeamNamed(t.name);
+    };
+
+    window.bpTeamPickerListMode = function() {
+        const teams = window._bpTeamPickerTeams || [];
+        const btns = teams.map((t, i) => bpTeamPickButtonHtml(t, i, 'plain')).join('')
+            + `<button onclick="bpTeamPickerCreateMode()" style="text-align:left;width:100%;padding:8px 10px;background:#003a66;border:1px solid #2277aa;color:#99ddff;border-radius:5px;cursor:pointer;font-size:0.85em;">+ Create New Team…</button>`;
+        if(typeof _showPickerModal === 'function') _showPickerModal('Add current character to team:', btns);
+    };
+
+    window.bpTeamPickerCreateMode = function() { bpShowTeamCreateMode(false); };
+
+    function bpShowTeamCreateMode(straightIn) {
+        if(typeof _showPickerModal !== 'function') {
+            const name = prompt('Team name to add this character to:');
+            if(name) assignCurrentHeroToTeamNamed(name);
+            return;
+        }
+        const teams = window._bpTeamPickerTeams || [];
+        const backBtn = (!straightIn && teams.length)
+            ? `<button onclick="bpTeamPickerListMode()" style="text-align:left;width:100%;padding:8px 10px;background:var(--bg-inset);border:1px solid var(--border);color:var(--text-sub);border-radius:5px;cursor:pointer;font-size:0.85em;">← Back to teams</button>`
+            : '';
+        const html = `<div style="display:flex;flex-direction:column;gap:8px;">
+            <input id="bpNewTeamName" type="text" placeholder="New team name…" autocomplete="off"
+                oninput="bpTeamPickerNameInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();bpTeamPickerSubmitCreate();}"
+                style="width:100%;box-sizing:border-box;padding:9px 10px;background:var(--bg-inset);border:1px solid var(--border);border-radius:5px;color:var(--text-main);font-size:0.9em;">
+            <div id="bpTeamPickerMatches" style="display:flex;flex-direction:column;gap:6px;"></div>
+            <button id="bpTeamPickerCreateBtn" onclick="bpTeamPickerSubmitCreate()" style="text-align:left;width:100%;padding:8px 10px;background:#003a66;border:1px solid #2277aa;color:#99ddff;border-radius:5px;cursor:pointer;font-size:0.85em;">+ Create Team &amp; Add</button>
+            ${backBtn}
+        </div>`;
+        _showPickerModal('Create a new team:', html);
+        setTimeout(() => { const inp = document.getElementById('bpNewTeamName'); if(inp) inp.focus(); }, 60);
+        bpTeamPickerNameInput();
+    }
+
+    // While typing a new team name, the existing teams stay visible: exact
+    // matches are flagged as already-a-team (tapping one assigns instead of
+    // duplicating), partial matches are highlighted, the rest dim.
+    window.bpTeamPickerNameInput = function() {
+        const inp = document.getElementById('bpNewTeamName');
+        const listEl = document.getElementById('bpTeamPickerMatches');
+        const btn = document.getElementById('bpTeamPickerCreateBtn');
+        if(!listEl) return;
+        const teams = window._bpTeamPickerTeams || [];
+        const q = inp ? String(inp.value || '').trim() : '';
+        const ql = q.toLowerCase();
+        let exact = -1;
+        teams.forEach((t, i) => { if(ql && t.name.toLowerCase() === ql) exact = i; });
+        listEl.innerHTML = teams.map((t, i) => {
+            if(!ql) return bpTeamPickButtonHtml(t, i, 'plain');
+            if(i === exact) return bpTeamPickButtonHtml(t, i, 'exact');
+            if(t.name.toLowerCase().includes(ql)) return bpTeamPickButtonHtml(t, i, 'match');
+            return bpTeamPickButtonHtml(t, i, 'dim');
+        }).join('');
+        if(btn) {
+            btn.innerHTML = exact >= 0
+                ? `Add to existing team: ${esc(teams[exact].name)}`
+                : (q ? `+ Create “${esc(q)}” &amp; Add` : '+ Create Team &amp; Add');
+        }
+    };
+
+    window.bpTeamPickerSubmitCreate = function() {
+        const inp = document.getElementById('bpNewTeamName');
+        const q = inp ? String(inp.value || '').trim() : '';
+        if(!q) return;
+        const teams = window._bpTeamPickerTeams || [];
+        const exact = teams.findIndex(t => t.name.toLowerCase() === q.toLowerCase());
+        _closePickerModal();
+        // An exact (case-insensitive) name match assigns to that team —
+        // never creates a duplicate.
+        if(exact >= 0) assignCurrentHeroToTeamNamed(teams[exact].name);
+        else assignCurrentHeroToTeamNamed(q);
+    };
+
+    window.addCurrentHeroToTeam = function() {
+        ensureHeroIds(true);
+        ensureTeamFolderUI();
+        const teams = collectTeamsWithMembers();
+        window._bpTeamPickerTeams = teams;
+        // No teams yet: straight to name entry, like the folder flow
+        // short-circuits to create when no folders exist.
+        if(!teams.length) { bpShowTeamCreateMode(true); return; }
+        if(typeof _showPickerModal === 'function') {
+            const btns = teams.map((t, i) => bpTeamPickButtonHtml(t, i, 'plain')).join('')
+                + `<button onclick="bpTeamPickerCreateMode()" style="text-align:left;width:100%;padding:8px 10px;background:#003a66;border:1px solid #2277aa;color:#99ddff;border-radius:5px;cursor:pointer;font-size:0.85em;">+ Create New Team…</button>`;
+            _showPickerModal('Add current character to team:', btns);
+        } else {
+            const name = prompt('Team name to add this character to:');
+            if(name) assignCurrentHeroToTeamNamed(name);
+        }
     };
 
 
