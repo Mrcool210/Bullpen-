@@ -18372,9 +18372,22 @@ function bpFixedFocusCost(powerName) {
     return m ? parseInt(m[1], 10) : 0;
 }
 function bpOutcomeSpec(powerName) {
-    // Furious Attacks & Supernova: regular success = HALF the total damage,
-    // Fantastic = full. Everything else: success = full, Fantastic = double.
-    if(powerName === 'Furious Attacks' || powerName === 'Supernova') return { success: 0.5, fantastic: 1 };
+    // Outcome fractions parsed from the power's own text:
+    // - the split/AoE family ("takes half regular damage... On a Fantastic
+    //   success, takes full damage"): success = half, Fantastic = full.
+    //   Furious Attacks, Supernova, Dance of Death, Fast Attacks, Fast
+    //   Strikes, Elemental Barrage, Whirling Frenzy, Spider-Strike, etc.
+    // - Fantastic-only half (Venom Burst): success = no damage, Fantastic = half.
+    // - everything else: success = full, Fantastic = double (the book default).
+    const pd = (powerName && typeof powersData !== 'undefined') ? powersData[powerName] : null;
+    const eff = (pd && pd.effect) || '';
+    if(!eff) return { success: 1, fantastic: 2 };
+    const halfM = eff.match(/half\s+(regular\s+|that\s+total\s+|health\s+|focus\s+)?damage/i);
+    const low = eff.toLowerCase();
+    const idxFant = low.indexOf('fantastic');
+    const fantasticFull = /fantastic[^.]{0,140}full[^.]{0,40}damage/i.test(eff);
+    if(halfM && fantasticFull && (idxFant === -1 || halfM.index < idxFant)) return { success: 0.5, fantastic: 1 };
+    if(halfM && idxFant !== -1 && halfM.index > idxFant) return { success: 0, fantastic: 0.5 };
     return { success: 1, fantastic: 2 };
 }
 function bpIsDamagePower(pd) {
@@ -18388,7 +18401,9 @@ function bpIsDamagePower(pd) {
 }
 function bpComputeDamage(actor, target, o) {
     // o: {ability, marvelDie, focusSpent, outcome, powerName, resource}
-    const spec = o.powerName ? bpSpendSpec(o.powerName) : null;
+    // (the resolution flow stores the power in o.name — accept both shapes)
+    const powerName = o.powerName || (o.kind === 'power' ? o.name : null) || null;
+    const spec = powerName ? bpSpendSpec(powerName) : null;
     let mult = bpCombatMult(actor, o.ability);
     let focusBonus = 0;
     if(spec && spec.boostPer && o.focusSpent > spec.boostBase)
@@ -18401,7 +18416,7 @@ function bpComputeDamage(actor, target, o) {
         if(effMult < 1) { negated = true; }
         else {
             const base = (parseInt(o.marvelDie, 10) || 0) * effMult + bpAbilityScore(actor, o.ability);
-            const os = bpOutcomeSpec(o.powerName);
+            const os = bpOutcomeSpec(powerName);
             damage = Math.floor(base * (o.outcome === 'fantastic' ? os.fantastic : os.success));
         }
     }
@@ -18520,7 +18535,8 @@ function bpTurnStart(safeUid, kind, name, ability) {
     const actor = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
     if(!actor) return;
     const sel = { actorUid: actor.uid, kind: kind, name: name || '', ability: ability || 'melee',
-        targets: [], outcome: 'success', marvelDie: 3, focusSpent: 0, resource: 'hp', damageMode: kind === 'attack' };
+        targets: [], d1: 3, d2: 3, marvelDie: 3, tn: {}, rollMode: 'manual', rolled: false,
+        focusSpent: 0, resource: 'hp', damageMode: kind === 'attack' };
     if(kind === 'power') {
         const pd = (typeof powersData !== 'undefined' && powersData[name]) || null;
         sel.damageMode = bpIsDamagePower(pd);
@@ -18530,6 +18546,39 @@ function bpTurnStart(safeUid, kind, name, ability) {
         if(pd && /Focus damage/i.test(pd.effect || '')) sel.resource = 'fp';
     }
     window._bpTurnSel = sel;
+    bpTurnRenderResolve();
+}
+function bpDefaultTN(target, ability) { return 10 + bpAbilityScore(target, ability); }
+function bpTargetTN(sel, target) {
+    const v = sel.tn ? sel.tn[target.uid] : undefined;
+    return (v === undefined || v === null) ? bpDefaultTN(target, sel.ability) : v;
+}
+function bpRollTotal(actor, sel) {
+    return (sel.d1 || 0) + (sel.d2 || 0) + (sel.marvelDie || 0) + bpAbilityScore(actor, sel.ability);
+}
+function bpResolveOutcome(actor, target, sel) {
+    const total = bpRollTotal(actor, sel);
+    const tn = bpTargetTN(sel, target);
+    const success = total >= tn;
+    const fantastic = success && sel.marvelDie === 6;
+    return { total: total, tn: tn, success: success, fantastic: fantastic,
+        fantasticFail: !success && sel.marvelDie === 6,
+        outcome: fantastic ? 'fantastic' : (success ? 'success' : 'miss') };
+}
+function bpProgramRoll() {
+    const sel = window._bpTurnSel; if(!sel) return;
+    sel.d1 = 1 + Math.floor(Math.random() * 6);
+    sel.d2 = 1 + Math.floor(Math.random() * 6);
+    sel.marvelDie = 1 + Math.floor(Math.random() * 6);
+    sel.rolled = true;
+    bpTurnRenderResolve();
+}
+function bpTurnTnAdj(uid, delta) {
+    const sel = window._bpTurnSel; if(!sel) return;
+    const t = combatants.find(function(x){ return x.uid === uid; });
+    if(!t) return;
+    if(!sel.tn) sel.tn = {};
+    sel.tn[uid] = Math.min(40, Math.max(1, bpTargetTN(sel, t) + delta));
     bpTurnRenderResolve();
 }
 function bpTurnToggleTarget(uid) {
@@ -18547,6 +18596,7 @@ function bpTurnAdj(field, delta) {
     const sel = window._bpTurnSel; if(!sel) return;
     const actor = combatants.find(function(x){ return x.uid === sel.actorUid; });
     if(field === 'marvelDie') sel.marvelDie = Math.min(6, Math.max(1, (sel.marvelDie || 1) + delta));
+    if(field === 'd1' || field === 'd2') sel[field] = Math.min(6, Math.max(1, (sel[field] || 1) + delta));
     if(field === 'focusSpent') {
         const cap = actor ? Math.max(0, actor.currentFp) : 99;
         sel.focusSpent = Math.min(cap, Math.max(0, (sel.focusSpent || 0) + delta));
@@ -18575,17 +18625,26 @@ function bpTurnRenderResolve() {
             return '<button onclick="bpTurnSet(\'ability\',\'' + a + '\')" style="flex:1; padding:7px 2px; font-size:0.78em; font-weight:bold; background:' + (on ? '#4a3800' : '#1c1c1c') + '; border:1px solid ' + (on ? '#ffcc44' : '#444') + '; border-radius:6px; color:' + (on ? '#ffcc66' : '#aaa') + '; cursor:pointer;">' + a.charAt(0).toUpperCase() + a.slice(1) + ' &times;' + bpCombatMult(actor, a) + '</button>';
         }).join('');
         html += '<div style="display:flex; gap:5px;">' + abChips + '</div>';
-        const oc = [['miss', 'Miss'], ['success', 'Success'], ['fantastic', 'Fantastic']].map(function(pair) {
-            const on = sel.outcome === pair[0];
-            return '<button onclick="bpTurnSet(\'outcome\',\'' + pair[0] + '\')" style="flex:1; padding:7px 2px; font-size:0.8em; font-weight:bold; background:' + (on ? '#234' : '#1c1c1c') + '; border:1px solid ' + (on ? '#6aa' : '#444') + '; border-radius:6px; color:' + (on ? '#aee' : '#aaa') + '; cursor:pointer;">' + pair[1] + '</button>';
+        const modeBtns = [['manual', '&#9995; I roll'], ['program', '&#127922; Program rolls']].map(function(pair) {
+            const on = sel.rollMode === pair[0];
+            return '<button onclick="bpTurnSet(\'rollMode\',\'' + pair[0] + '\')" style="flex:1; padding:7px 2px; font-size:0.8em; font-weight:bold; background:' + (on ? '#234' : '#1c1c1c') + '; border:1px solid ' + (on ? '#6aa' : '#444') + '; border-radius:6px; color:' + (on ? '#aee' : '#aaa') + '; cursor:pointer;">' + pair[1] + '</button>';
         }).join('');
-        html += '<div style="display:flex; gap:5px;">' + oc + '</div>';
+        html += '<div style="display:flex; gap:5px;">' + modeBtns + '</div>';
         html += '<div style="display:flex; gap:5px;">'
             + ['hp', 'fp'].map(function(r) {
                 const on = sel.resource === r;
                 return '<button onclick="bpTurnSet(\'resource\',\'' + r + '\')" style="flex:1; padding:6px 2px; font-size:0.78em; background:' + (on ? '#33203a' : '#1c1c1c') + '; border:1px solid ' + (on ? '#aa7acc' : '#444') + '; border-radius:6px; color:' + (on ? '#ddaaff' : '#aaa') + '; cursor:pointer;">Damage: ' + (r === 'hp' ? 'Health' : 'Focus') + '</button>';
             }).join('') + '</div>';
-        html += bpTurnStepRow('Marvel die (your roll)', 'marvelDie', sel.marvelDie, 'Damage = die &times; multiplier + ' + _bpEsc(sel.ability) + ' score');
+        if(sel.rollMode === 'program') {
+            html += '<div style="display:flex; align-items:center; gap:10px;">'
+                + '<div style="flex:1; font-size:1.1em; color:#eee;">&#127922; ' + (sel.d1 || '-') + ' + ' + (sel.d2 || '-') + ' + <strong style="color:#ffcc66;">' + (sel.marvelDie === 6 ? 'M' : (sel.marvelDie || '-')) + '</strong> <span style="font-size:0.7em; color:#888;">(last die is the Marvel die)</span></div>'
+                + '<button onclick="bpProgramRoll()" style="padding:9px 14px; font-weight:bold; background:#4a3800; border:1px solid #ffcc44; border-radius:6px; color:#ffcc66; cursor:pointer;">' + (sel.rolled ? 'Roll again' : '&#127922; Roll') + '</button></div>';
+        } else {
+            html += bpTurnStepRow('First die', 'd1', sel.d1, '');
+            html += bpTurnStepRow('Second die', 'd2', sel.d2, '');
+            html += bpTurnStepRow('Marvel die', 'marvelDie', sel.marvelDie, 'A 6 is an M — Fantastic on a success');
+        }
+        html += '<div style="font-size:0.85em; color:#aee;">Check total: <strong>' + bpRollTotal(actor, sel) + '</strong> <span style="color:#777;">(dice + ' + _bpEsc(sel.ability) + ' score ' + bpAbilityScore(actor, sel.ability) + ') &middot; damage = Marvel die &times; multiplier + score</span></div>';
     }
     if(spec) {
         const boostNote = spec.boostPer
@@ -18598,16 +18657,30 @@ function bpTurnRenderResolve() {
     if(sel.kind === 'declare') html += '<div style="font-size:0.82em; color:#bbb;">Sets ' + _bpEsc(actor.baseName || 'their') + ' status to &ldquo;' + _bpEsc(sel.name) + '&rdquo;. Pick a target if it applies to someone.</div>';
     if(sel.kind === 'power' && !sel.damageMode) html += '<div style="font-size:0.82em; color:#bbb;">Marks the power used and records it. Pick target(s) if it applies to someone.</div>';
     // Targets
+    const miniB = 'width:26px; height:26px; font-size:0.9em; background:#222; border:1px solid #555; border-radius:5px; color:#eee; cursor:pointer;';
     const tBtns = combatants.filter(function(x){ return x.uid !== actor.uid; }).map(function(t) {
         const on = sel.targets.indexOf(t.uid) !== -1;
-        let preview = '';
-        if(on && sel.damageMode) {
-            const r = bpComputeDamage(actor, t, sel);
-            preview = r.outcome === 'miss' ? '' : (r.negated ? ' <span style="color:#ff8888;">(DR negates)</span>' : ' <span style="color:#ffcc66;">&rarr; ' + r.damage + ' dmg</span>');
+        const head = (on ? '&#9679; ' : '&#9675; ') + _bpEsc(t.label || t.baseName)
+            + ' <span style="color:#888; font-size:0.85em;">HP ' + t.currentHp + '/' + t.maxHp + ' &middot; F ' + t.currentFp + '/' + t.maxFp + '</span>';
+        if(!on || !sel.damageMode) {
+            return '<button onclick="bpTurnToggleTarget(\'' + t.uid + '\')" style="width:100%; text-align:left; padding:8px 10px; background:' + (on ? '#2a2410' : '#1a1a1a') + '; border:1px solid ' + (on ? '#ffcc44' : '#3a3a3a') + '; border-radius:6px; color:#ddd; cursor:pointer; font-size:0.84em;">' + head + '</button>';
         }
-        return '<button onclick="bpTurnToggleTarget(\'' + t.uid + '\')" style="width:100%; text-align:left; padding:8px 10px; background:' + (on ? '#2a2410' : '#1a1a1a') + '; border:1px solid ' + (on ? '#ffcc44' : '#3a3a3a') + '; border-radius:6px; color:#ddd; cursor:pointer; font-size:0.84em;">'
-            + (on ? '&#9679; ' : '&#9675; ') + _bpEsc(t.label || t.baseName)
-            + ' <span style="color:#888; font-size:0.85em;">HP ' + t.currentHp + '/' + t.maxHp + ' &middot; F ' + t.currentFp + '/' + t.maxFp + '</span>' + preview + '</button>';
+        const res = bpResolveOutcome(actor, t, sel);
+        const r = bpComputeDamage(actor, t, Object.assign({}, sel, { outcome: res.outcome }));
+        const verdict = res.fantastic ? '<span style="color:#ffcc44;">&#9733; Fantastic!</span>'
+            : res.success ? '<span style="color:#88dd88;">&#10003; Success</span>'
+            : '<span style="color:#ff8888;">&#10007; ' + (res.fantasticFail ? 'Fantastic failure' : 'Failed') + '</span>';
+        const dmgTxt = res.outcome === 'miss' ? '' : (r.negated ? ' <span style="color:#ff8888;">(DR negates)</span>' : ' <span style="color:#ffcc66;">&rarr; ' + r.damage + ' dmg</span>');
+        return '<div style="padding:8px 10px; background:#2a2410; border:1px solid #ffcc44; border-radius:6px;">'
+            + '<div style="display:flex; align-items:center; gap:6px;">'
+            + '<button onclick="bpTurnToggleTarget(\'' + t.uid + '\')" style="flex:1; text-align:left; background:none; border:none; color:#ddd; cursor:pointer; font-size:0.84em; padding:0;">' + head + '</button>'
+            + '<span style="font-size:0.74em; color:#999;">TN</span>'
+            + '<button onclick="bpTurnTnAdj(\'' + t.uid + '\',-1)" style="' + miniB + '">&minus;</button>'
+            + '<span style="min-width:24px; text-align:center; font-weight:bold; color:#ffcc66;">' + res.tn + '</span>'
+            + '<button onclick="bpTurnTnAdj(\'' + t.uid + '\',1)" style="' + miniB + '">+</button>'
+            + '</div>'
+            + '<div style="font-size:0.8em; margin-top:4px;">' + verdict + ' <span style="color:#888;">(' + res.total + ' vs TN ' + res.tn + ')</span>' + dmgTxt + '</div>'
+            + '</div>';
     }).join('');
     html += '<div style="font-size:0.78em; color:#999; font-weight:bold; letter-spacing:1px;">TARGET' + (sel.damageMode ? ' (tap all that apply)' : '') + '</div>'
         + '<div style="display:flex; flex-direction:column; gap:5px;">' + (tBtns || '<span style="font-size:0.8em; color:#777;">No one else in the fight.</span>') + '</div>';
@@ -18634,22 +18707,28 @@ function bpTurnConfirm() {
         if(idx !== -1 && actor.usedPowers.indexOf(idx) === -1) actor.usedPowers.push(idx);
     }
     const targetNames = [];
+    let resultRows = null;
     if(sel.kind === 'declare') {
         actor.status = sel.name;
         actor.lastEvent = sel.name + (sel.targets.length ? ' (target: ' + sel.targets.map(function(u){ const t = combatants.find(function(x){ return x.uid === u; }); return t ? (t.label || t.baseName) : ''; }).join(', ') + ')' : '');
     } else if(sel.damageMode) {
         const parts = [];
+        resultRows = [];
         sel.targets.forEach(function(u) {
             const t = combatants.find(function(x){ return x.uid === u; });
             if(!t) return;
             targetNames.push(t.label || t.baseName);
-            const r = bpComputeDamage(actor, t, sel);
-            if(sel.outcome === 'miss') { t.lastEvent = _bpEsc(actor.baseName || '') + ' missed with ' + sel.name + '.'; parts.push((t.label || t.baseName) + ': miss'); return; }
-            if(r.negated) { t.lastEvent = (actor.baseName || '') + "'s " + sel.name + ' was negated by DR ' + r.dr + '.'; parts.push((t.label || t.baseName) + ': negated by DR'); return; }
+            const res = bpResolveOutcome(actor, t, sel);
+            const r = bpComputeDamage(actor, t, Object.assign({}, sel, { outcome: res.outcome }));
+            if(res.outcome === 'miss') { t.lastEvent = _bpEsc(actor.baseName || '') + ' missed with ' + sel.name + ' (' + res.total + ' vs TN ' + res.tn + ').'; parts.push((t.label || t.baseName) + ': miss'); resultRows.push({ name: t.label || t.baseName, state: 'miss', total: res.total, tn: res.tn, fantasticFail: res.fantasticFail }); return; }
+            if(r.negated) { t.lastEvent = (actor.baseName || '') + "'s " + sel.name + ' was negated by DR ' + r.dr + '.'; parts.push((t.label || t.baseName) + ': negated by DR'); resultRows.push({ name: t.label || t.baseName, state: 'negated', dr: r.dr, total: res.total, tn: res.tn }); return; }
+            const before = sel.resource === 'fp' ? t.currentFp : t.currentHp;
             if(sel.resource === 'fp') t.currentFp = Math.max(0, t.currentFp - r.damage);
             else t.currentHp = Math.max(0, t.currentHp - r.damage);
+            const after = sel.resource === 'fp' ? t.currentFp : t.currentHp;
             t.lastEvent = 'Took ' + r.damage + ' ' + (sel.resource === 'fp' ? 'Focus' : 'Health') + ' damage from ' + (actor.baseName || '') + ' (' + sel.name + ').';
             parts.push((t.label || t.baseName) + ' takes ' + r.damage);
+            resultRows.push({ name: t.label || t.baseName, state: 'hit', damage: r.damage, before: before, after: after, resource: sel.resource, fantastic: res.fantastic, total: res.total, tn: res.tn });
         });
         actor.lastEvent = '&#9876; ' + sel.name + (targetNames.length ? ' &rarr; ' + targetNames.join(', ') : '') + (parts.length ? ': ' + parts.join('; ') : '') + (spent ? ' &middot; spent ' + spent + ' Focus' : '') + '.';
     } else {
@@ -18659,7 +18738,18 @@ function bpTurnConfirm() {
     window._bpTurnSel = null;
     _closePickerModal();
     if(typeof renderActiveCombat === 'function') renderActiveCombat();
-    if(typeof showNotice === 'function') showNotice(notice);
+    if(resultRows && resultRows.length) {
+        // Ben (2026-10-26): a popup states exactly how much damage was done.
+        const resLabel = sel.resource === 'fp' ? 'Focus' : 'Health';
+        const rows = resultRows.map(function(x) {
+            if(x.state === 'miss') return '<div style="font-size:1em; color:#999; padding:7px 10px; background:#1a1a1a; border:1px solid #333; border-radius:6px;">' + _bpEsc(x.name) + ' — <strong>' + (x.fantasticFail ? 'Fantastic failure' : 'failed') + '</strong> <span style="color:#777;">(rolled ' + x.total + ' vs TN ' + x.tn + ')</span>, no damage</div>';
+            if(x.state === 'negated') return '<div style="font-size:1em; color:#ffaa88; padding:7px 10px; background:#241611; border:1px solid #664433; border-radius:6px;">' + _bpEsc(x.name) + ' — hit <span style="color:#cc9988;">(rolled ' + x.total + ' vs TN ' + x.tn + ')</span> but <strong>0 damage</strong> (negated by DR ' + x.dr + ')</div>';
+            return '<div style="font-size:1.05em; color:#ffd9d9; padding:8px 10px; background:#2a0d0d; border:1px solid #773333; border-radius:6px;">' + (x.fantastic ? '<span style="color:#ffcc44;">&#9733; Fantastic! </span>' : '') + _bpEsc(x.name) + ' takes <strong style="color:#ff6666; font-size:1.25em;">' + x.damage + '</strong> ' + resLabel + ' damage <span style="color:#aa8888; font-size:0.82em;">(rolled ' + x.total + ' vs TN ' + x.tn + ' &middot; ' + x.before + ' &rarr; ' + x.after + ')</span></div>';
+        }).join('');
+        _showPickerModal('&#128165; ' + _bpEsc(actor.label || actor.baseName) + ' — ' + _bpEsc(sel.name),
+            rows + (spent ? '<div style="font-size:0.82em; color:#ddaaff;">Spent ' + spent + ' Focus</div>' : '')
+            + '<button onclick="_closePickerModal()" style="padding:10px; font-size:0.9em; font-weight:bold; background:#333; border:1px solid #555; border-radius:6px; color:#eee; cursor:pointer;">OK</button>');
+    } else if(typeof showNotice === 'function') showNotice(notice);
 }
 
 // ── 2.8.12 combat enhancements ─────────────────────────────────────────────
