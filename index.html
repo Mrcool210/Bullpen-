@@ -18343,16 +18343,26 @@ function bpCombatMult(c, ab) {
 function bpFocusDR(c) { // Uncanny N reduces the multiplier of Focus attacks
     return bpCombatPowerBonus(c && c.powers, ['Uncanny']);
 }
-// Variable Focus spend spec: "add +1 ... for every N points of Focus they
-// spend" in the effect + a Focus cost. Returns {per, min} or null.
+// Variable Focus spend spec: any power whose cost is "N or more Focus" asks
+// how much the player spends (Ben, 2026-10-26) — attack powers that scale
+// damage with the spend additionally report boostPer (Focus per +1 damage
+// multiplier; the book's "damage bonus" for an ability is a bonus to that
+// ability's damage multiplier, Core damage section) and boostBase (spend
+// that must be paid before the boost starts, e.g. Supernova's base 15).
+// Returns {min, boostPer|null, boostBase} or null for non-variable powers.
 function bpSpendSpec(powerName) {
     const pd = (typeof powersData !== 'undefined' && powersData[powerName]) || null;
     if(!pd) return null;
     const eff = pd.effect || '', cost = pd.cost || '';
-    const m = eff.match(/every\s+(\d+)\s+points?\s+of\s+Focus/i);
-    if(!m || !/damage/i.test(eff) || !/Focus/i.test(cost + ' ' + eff)) return null;
     const minM = cost.match(/(\d+)\s+or more/i);
-    return { per: Math.max(1, parseInt(m[1], 10)), min: minM ? parseInt(minM[1], 10) : parseInt(m[1], 10) };
+    if(!minM) return null;
+    const perM = eff.match(/every\s+(\d+)\s+points?\s+of\s+Focus/i);
+    const baseM = eff.match(/beyond the base\s+(\d+)/i);
+    return {
+        min: parseInt(minM[1], 10),
+        boostPer: (perM && /damage/i.test(eff)) ? Math.max(1, parseInt(perM[1], 10)) : null,
+        boostBase: baseM ? parseInt(baseM[1], 10) : 0
+    };
 }
 function bpFixedFocusCost(powerName) {
     const pd = (typeof powersData !== 'undefined' && powersData[powerName]) || null;
@@ -18362,20 +18372,27 @@ function bpFixedFocusCost(powerName) {
     return m ? parseInt(m[1], 10) : 0;
 }
 function bpOutcomeSpec(powerName) {
-    // Furious Attacks: regular success = HALF the total damage, Fantastic = full.
-    if(powerName === 'Furious Attacks') return { success: 0.5, fantastic: 1 };
+    // Furious Attacks & Supernova: regular success = HALF the total damage,
+    // Fantastic = full. Everything else: success = full, Fantastic = double.
+    if(powerName === 'Furious Attacks' || powerName === 'Supernova') return { success: 0.5, fantastic: 1 };
     return { success: 1, fantastic: 2 };
 }
 function bpIsDamagePower(pd) {
     if(!pd) return false;
-    return /damage/i.test(pd.effect || '') && !/^passive$/i.test((pd.action || '').trim());
+    const eff = pd.effect || '';
+    // Damage resolution only fits powers that make their own attack/check
+    // against a target. Trigger/buff powers that merely mention damage
+    // (Anger, Brace for Impact) open as plain 'use' instead.
+    return /damage/i.test(eff) && /makes?\s+[^.]{0,60}?(attack|attacks|check)/i.test(eff)
+        && !/^passive$/i.test((pd.action || '').trim());
 }
 function bpComputeDamage(actor, target, o) {
     // o: {ability, marvelDie, focusSpent, outcome, powerName, resource}
     const spec = o.powerName ? bpSpendSpec(o.powerName) : null;
     let mult = bpCombatMult(actor, o.ability);
     let focusBonus = 0;
-    if(spec && o.focusSpent > 0) focusBonus = Math.floor(o.focusSpent / spec.per);
+    if(spec && spec.boostPer && o.focusSpent > spec.boostBase)
+        focusBonus = Math.floor((o.focusSpent - spec.boostBase) / spec.boostPer);
     mult += focusBonus;
     const dr = !target ? 0 : (o.resource === 'fp' ? bpFocusDR(target) : _getHealthDamageReduction(target));
     const effMult = mult - dr;
@@ -18569,10 +18586,13 @@ function bpTurnRenderResolve() {
                 return '<button onclick="bpTurnSet(\'resource\',\'' + r + '\')" style="flex:1; padding:6px 2px; font-size:0.78em; background:' + (on ? '#33203a' : '#1c1c1c') + '; border:1px solid ' + (on ? '#aa7acc' : '#444') + '; border-radius:6px; color:' + (on ? '#ddaaff' : '#aaa') + '; cursor:pointer;">Damage: ' + (r === 'hp' ? 'Health' : 'Focus') + '</button>';
             }).join('') + '</div>';
         html += bpTurnStepRow('Marvel die (your roll)', 'marvelDie', sel.marvelDie, 'Damage = die &times; multiplier + ' + _bpEsc(sel.ability) + ' score');
-        if(spec) {
-            html += bpTurnStepRow('Focus to spend (' + _bpEsc(sel.name) + ')', 'focusSpent', sel.focusSpent,
-                '+' + Math.floor((sel.focusSpent || 0) / spec.per) + ' damage multiplier (1 per ' + spec.per + ' Focus, min ' + spec.min + ') &middot; has ' + actor.currentFp + ' Focus');
-        }
+    }
+    if(spec) {
+        const boostNote = spec.boostPer
+            ? '+' + Math.max(0, Math.floor(((sel.focusSpent || 0) - spec.boostBase) / spec.boostPer)) + ' damage multiplier (1 per ' + spec.boostPer + ' Focus' + (spec.boostBase ? ' beyond the base ' + spec.boostBase : '') + ') &middot; '
+            : '';
+        html += bpTurnStepRow('Focus to spend (' + _bpEsc(sel.name) + ')', 'focusSpent', sel.focusSpent,
+            boostNote + 'min ' + spec.min + ' &middot; has ' + actor.currentFp + ' Focus');
     }
     if(fixedCost > 0) html += '<div style="font-size:0.8em; color:#ddaaff;">Cost: ' + fixedCost + ' Focus (deducted on confirm) &middot; has ' + actor.currentFp + '</div>';
     if(sel.kind === 'declare') html += '<div style="font-size:0.82em; color:#bbb;">Sets ' + _bpEsc(actor.baseName || 'their') + ' status to &ldquo;' + _bpEsc(sel.name) + '&rdquo;. Pick a target if it applies to someone.</div>';
