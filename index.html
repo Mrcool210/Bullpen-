@@ -18422,6 +18422,11 @@ function bpEncSummary(enc) {
     return parts.join(', ');
 }
 
+function bpEncKindLabel(enc) {
+    if(enc.saveKind === 'in-progress') return '⏸ In progress' + (enc.fight && enc.fight.round > 1 ? ' · Round ' + enc.fight.round : '') + ' · resumes with damage intact';
+    return (enc.saveKind === 'prepared' ? '🎯 Prepared battle' : '💾 Saved roster') + ' · starts at full Health/Focus';
+}
+
 function bpRenderFightEntry() {
     const el = document.getElementById('fightEntryPanel');
     if(!el) return;
@@ -18446,14 +18451,15 @@ function bpRenderFightEntry() {
         h += list.map(function(enc, i) {
             const n = (enc.entries || []).reduce(function(a, e){ return a + (Math.max(1, parseInt(e.qty, 10) || 1)); }, 0);
             const when = enc.savedAt ? new Date(enc.savedAt).toLocaleDateString() : '';
-            const kindLbl = enc.saveKind === 'prepared' ? '🎯 Prepared battle' : '💾 Saved roster';
+            const kindLbl = bpEncKindLabel(enc);
             const sum = bpEncSummary(enc);
             return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
                 + '<span style="flex:1;font-size:0.82em;"><strong>' + _bpFightEsc(enc.name || 'Untitled') + '</strong> <span style="color:#666;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span>'
-                + '<br><span style="font-size:0.85em;color:#999;">' + kindLbl + (when ? ' · ' + when : '') + ' · starts at full Health/Focus</span>'
+                + '<br><span style="font-size:0.85em;color:#999;">' + kindLbl + (when ? ' · ' + when : '') + '</span>'
                 + (sum ? '<br><span style="font-size:0.85em;color:#777;">' + _bpFightEsc(sum) + '</span>' : '')
                 + '</span>'
                 + '<button onclick="bpLoadEncounterAndFight(' + i + ')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#0a3a5a;border:1px solid #1a6a9a;border-radius:4px;color:#aad4ff;cursor:pointer;">Load</button>'
+                + '<button onclick="bpEditEncounter(\' + i + \')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#222;border:1px solid #555;border-radius:4px;color:#ddd;cursor:pointer;">✎ Edit</button>'
                 + '<button onclick="bpDeleteEncounterAndRefresh(' + i + ')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
                 + '</div>';
         }).join('');
@@ -18467,6 +18473,32 @@ function bpLoadEncounterAndFight(i) {
     bpSetFightPhase('combat');
 }
 
+// Edit a saved battle in place: its fighters are staged into the Fight
+// setup flow with the battle's name prefilled. Saving from setup with the
+// same name overwrites this save; renaming it saves a new battle alongside.
+// An in-progress save keeps everyone's damage/Focus/conditions when edited,
+// but its turn order is cleared — the fight restarts from setup.
+function bpEditEncounter(i) {
+    const enc = bpGetEncounters()[i];
+    if(!enc) return;
+    bpLoadEncounter(i);
+    if(enc.saveKind === 'in-progress') {
+        combatPhase = 'lobby'; initiativeOrder = []; bonusOrder = []; mainOrder = [];
+        combatTurn = -1; bonusTurn = 0; mainTurn = 0; initiativeRolls = {};
+    }
+    window._bpResumedEncounter = null;
+    window._bpEditingEncounter = { index: i, name: enc.name || '', currentName: enc.name || '' };
+    bpSetFightPhase('setup-heroes');
+    const nameEl = document.getElementById('fightSaveName');
+    if(nameEl) nameEl.value = enc.name || '';
+    if(typeof showNotice === 'function') showNotice('Editing "' + (enc.name || 'battle') + '" — Save Battle overwrites it unless you rename it.');
+}
+
+function bpStopEditingEncounter() {
+    window._bpEditingEncounter = null;
+    if(typeof bpRenderFightSetup === 'function') bpRenderFightSetup();
+}
+
 function bpDeleteEncounterAndRefresh(i) {
     const list = bpGetEncounters();
     list.splice(i, 1);
@@ -18478,6 +18510,10 @@ function bpDeleteEncounterAndRefresh(i) {
 function bpRenderFightSetup() {
     const el = document.getElementById('fightSetupBar');
     if(!el) return;
+    const editing = window._bpEditingEncounter || null;
+    const editBanner = editing
+        ? '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#241a08;border:1px solid #6a5518;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:0.82em;color:#ffe1a8;"><span style="flex:1;min-width:160px;">✎ Editing saved battle <strong>' + _bpFightEsc(editing.name || 'Untitled') + '</strong> — 💾 Save Battle overwrites it unless you rename it.</span><button onclick="bpStopEditingEncounter()" style="width:auto;padding:4px 10px;font-size:0.78em;background:#222;border:1px solid #555;border-radius:4px;color:#ddd;cursor:pointer;">✕ Stop editing</button></div>'
+        : '';
     const step2 = fightUiPhase === 'setup-narrator';
     const btn = 'width:auto;padding:8px 14px;font-size:0.82em;border-radius:5px;cursor:pointer;';
     el.innerHTML = '<div style="background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:12px;">'
@@ -18488,10 +18524,11 @@ function bpRenderFightSetup() {
             ? '<button onclick="bpSetFightPhase(\'setup-heroes\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">← Back</button>'
             : '<button onclick="bpSetFightPhase(\'entry\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">✖ Cancel</button>')
         + '</div>'
+        + editBanner
         + '<div id="fightStagedStrip" style="font-size:0.85em;margin-bottom:10px;"></div>'
         + '<div id="fightAddNotice" style="display:none;font-size:0.82em;color:#cfe8a8;background:#16240f;border:1px solid #3a5a22;border-radius:5px;padding:6px 10px;margin-bottom:10px;"></div>'
         + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'
-        + '<input id="fightSaveName" type="text" placeholder="Battle name…" style="flex:1;min-width:130px;padding:7px 10px;font-size:0.82em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
+        + '<input id="fightSaveName" type="text" oninput="if(window._bpEditingEncounter) window._bpEditingEncounter.currentName = this.value;" placeholder="Battle name…" style="flex:1;min-width:130px;padding:7px 10px;font-size:0.82em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
         + '<button onclick="bpSaveBattleFromSetup()" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">💾 Save Battle</button>'
         + (step2
             ? '<button onclick="bpBeginCombat()" style="' + btn + 'font-weight:bold;background:#1a6600;border:1px solid #44aa44;color:#fff;">⚔ Begin Combat</button>'
@@ -18499,6 +18536,7 @@ function bpRenderFightSetup() {
         + '</div>'
         + (step2 ? '' : '<div style="font-size:0.75em;color:#777;margin-top:8px;">Tip: you can Save Battle at either step, or skip the narrator step with Begin Combat there.</div>')
         + '</div>';
+    if(editing) { const inp = document.getElementById('fightSaveName'); if(inp) inp.value = editing.currentName || editing.name || ''; }
     bpRenderStagedStrip();
 }
 
@@ -18580,11 +18618,12 @@ function bpAddTeamToFight(i) {
 function bpSaveBattleFromSetup() {
     const nameEl = document.getElementById('fightSaveName');
     const name = (nameEl && nameEl.value.trim()) || ('Battle ' + new Date().toLocaleDateString());
-    if(bpSaveEncounterCore(name, 'prepared') && nameEl) nameEl.value = '';
+    if(bpSaveEncounterCore(name, 'prepared') && nameEl && !window._bpEditingEncounter) nameEl.value = '';
 }
 
 function bpBeginCombat() {
     if(!combatants.length) { if(typeof showNotice === 'function') showNotice('Add at least one fighter before starting combat.'); return; }
+    window._bpEditingEncounter = null;
     bpSetFightPhase('combat');
 }
 
@@ -18594,10 +18633,23 @@ function bpRenderFightCombatBar() {
     const btn = 'width:auto;padding:7px 12px;font-size:0.8em;border-radius:5px;cursor:pointer;';
     el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:8px 10px;">'
         + '<span style="font-size:0.85em;font-weight:bold;letter-spacing:1px;">⚔ Combat</span>'
+        + '<input id="combatSaveName" type="text" placeholder="Battle name…" style="width:130px;padding:7px 10px;font-size:0.8em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
+        + '<button onclick="bpSaveBattleFromCombat()" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">💾 Save Battle</button>'
         + '<span style="flex:1;"></span>'
         + '<button onclick="bpSetupFromCombat()" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">⚙ Setup</button>'
         + '<button onclick="bpEndFightToEntry()" style="' + btn + 'background:#3a0a0a;border:1px solid #6a1a1a;color:#ff9999;">🏁 End Fight</button>'
         + '</div>';
+}
+
+// Mid-combat save: stores the full fight state (see bpSaveEncounterCore),
+// so loading the save resumes the battle exactly where it was. With no
+// name typed, it overwrites the in-progress save this fight was resumed
+// from; otherwise it saves under the typed name.
+function bpSaveBattleFromCombat() {
+    const nameEl = document.getElementById('combatSaveName');
+    const typed = nameEl && nameEl.value.trim();
+    const name = typed || (window._bpResumedEncounter && window._bpResumedEncounter.name) || ('Battle ' + new Date().toLocaleDateString());
+    if(bpSaveEncounterCore(name, 'prepared') && nameEl) nameEl.value = '';
 }
 
 // Back to setup mid-fight: the engine's endCombat() resets orders, pools,
@@ -18639,43 +18691,98 @@ function bpSaveEncounter() {
 }
 // Shared save core. kind: 'prepared' = a battle set up in the Fight setup
 // flow, saved before combat; 'roster' = a roster snapshot saved from the
-// tracker (the pre-2.9 behavior — saves made before this field existed have
-// no kind and are treated as 'roster'). The format stores the roster plus
-// any active conditions (with custom per-turn amounts) — never mid-fight
-// HP/Focus — so every load starts at full Health/Focus; the kind label
-// just tells the user which workflow produced the save.
+// tracker (saves made before this field existed have no kind and are treated
+// as 'roster'). Prepared/roster saves store the roster plus any active
+// conditions (with custom per-turn amounts) and load at full Health/Focus.
+//
+// A save made while a fight is actually underway — initiative rolled, or
+// anyone damaged, Focus-spent, Karma-gained or with a power used, or the
+// round/pool counters moved — becomes saveKind 'in-progress' instead: every
+// combatant is stored individually with its full state, plus the fight's
+// round, pools, turn order and initiative rolls, and loading it resumes
+// the battle where it left off.
+//
+// Overwrite rule (edit-in-place): when the save name matches the battle
+// being edited (bpEditEncounter) or the in-progress battle this fight was
+// resumed from, that existing save is replaced instead of duplicated.
+function bpStatefulFight() {
+    if(typeof combatants === 'undefined' || !combatants.length) return false;
+    if(typeof combatPhase !== 'undefined' && combatPhase !== 'lobby') return true;
+    if((typeof combatRound !== 'undefined' && combatRound > 1) || (typeof combatPlot !== 'undefined' && combatPlot > 0) || (typeof combatKarma !== 'undefined' && combatKarma > 0)) return true;
+    return combatants.some(function(c){ return c.currentHp < c.maxHp || c.currentFp < c.maxFp || (c.usedPowers && c.usedPowers.length) || (c.karma || 0) > 0; });
+}
+
+function bpFindOverwriteIndex(name) {
+    const list = bpGetEncounters();
+    const slots = [window._bpEditingEncounter, window._bpResumedEncounter];
+    for(let k = 0; k < slots.length; k++) {
+        const slot = slots[k];
+        if(slot && slot.name === name && typeof slot.index === 'number' && list[slot.index] && list[slot.index].name === name) return slot.index;
+    }
+    return -1;
+}
+
 function bpSaveEncounterCore(name, kind) {
     if(!combatants.length) { if(typeof showNotice === 'function') showNotice('No combatants to save.'); return false; }
-    const groups = [];
-    combatants.forEach(function(c) {
-        // Combatants only group together when their condition state matches
-        // too, so saved conditions (and custom per-turn amounts) round-trip
-        // exactly instead of being averaged across a group.
-        const condSig = (c.conditions && c.conditions.length)
-            ? '|cond:' + c.conditions.slice().sort().join(',') + ':' + JSON.stringify(c.conditionAmounts || {})
-            : '';
-        const key = (c.vaultId ? 'v|' + c.vaultId : 'n|' + c.baseName + '|' + c.rank + '|' + (c.resilience || 0)) + condSig;
-        let g = null;
-        for(let i = 0; i < groups.length; i++) if(groups[i].key === key && groups[i].side === c.side) { g = groups[i]; break; }
-        if(!g) {
-            g = { key: key, qty: 0, side: c.side };
-            if(c.vaultId) { g.kind = 'vault'; g.vaultId = c.vaultId; }
-            else { g.kind = 'narrator'; g.name = c.baseName; g.rank = c.rank; g.res = c.resilience || 0; g.vig = c.vigilance || 0; g.notes = c.notes || ''; }
-            if(c.conditions && c.conditions.length) { g.conds = c.conditions.slice(); g.condAmt = Object.assign({}, c.conditionAmounts || {}); }
-            groups.push(g);
-        }
-        g.qty++;
-    });
+    const stateful = bpStatefulFight();
+    const actualKind = stateful ? 'in-progress' : (kind === 'prepared' ? 'prepared' : 'roster');
+    let entries, fight = null;
+    if(stateful) {
+        const idxOfUid = function(uid) { for(let k = 0; k < combatants.length; k++) if(combatants[k].uid === uid) return k; return -1; };
+        entries = combatants.map(function(c) {
+            const e = { qty: 1, side: c.side };
+            if(c.vaultId) { e.kind = 'vault'; e.vaultId = c.vaultId; }
+            else { e.kind = 'narrator'; e.name = c.baseName; e.rank = c.rank; e.res = c.resilience || 0; e.vig = c.vigilance || 0; e.notes = c.notes || ''; }
+            if(c.conditions && c.conditions.length) { e.conds = c.conditions.slice(); if(c.conditionAmounts && Object.keys(c.conditionAmounts).length) e.condAmt = Object.assign({}, c.conditionAmounts); }
+            e.state = { hp: c.currentHp, fp: c.currentFp, maxHp: c.maxHp, maxFp: c.maxFp, initiative: c.initiative || 0, karma: c.karma || 0, status: c.status || '', used: (c.usedPowers || []).slice() };
+            return e;
+        });
+        const mapOrder = function(arr) { return (arr || []).map(idxOfUid).filter(function(x){ return x >= 0; }); };
+        const rolls = {};
+        Object.keys(initiativeRolls || {}).forEach(function(uid) { const k = idxOfUid(uid); if(k >= 0) rolls[k] = initiativeRolls[uid]; });
+        fight = { phase: combatPhase, round: combatRound, plot: combatPlot, karma: combatKarma, turn: combatTurn, bonusTurn: bonusTurn, mainTurn: mainTurn, order: mapOrder(initiativeOrder), bonusOrder: mapOrder(bonusOrder), mainOrder: mapOrder(mainOrder), rolls: rolls };
+    } else {
+        const groups = [];
+        combatants.forEach(function(c) {
+            // Combatants only group together when their condition state matches
+            // too, so saved conditions (and custom per-turn amounts) round-trip
+            // exactly instead of being averaged across a group.
+            const condSig = (c.conditions && c.conditions.length)
+                ? '|cond:' + c.conditions.slice().sort().join(',') + ':' + JSON.stringify(c.conditionAmounts || {})
+                : '';
+            const key = (c.vaultId ? 'v|' + c.vaultId : 'n|' + c.baseName + '|' + c.rank + '|' + (c.resilience || 0)) + condSig;
+            let g = null;
+            for(let i = 0; i < groups.length; i++) if(groups[i].key === key && groups[i].side === c.side) { g = groups[i]; break; }
+            if(!g) {
+                g = { key: key, qty: 0, side: c.side };
+                if(c.vaultId) { g.kind = 'vault'; g.vaultId = c.vaultId; }
+                else { g.kind = 'narrator'; g.name = c.baseName; g.rank = c.rank; g.res = c.resilience || 0; g.vig = c.vigilance || 0; g.notes = c.notes || ''; }
+                if(c.conditions && c.conditions.length) { g.conds = c.conditions.slice(); g.condAmt = Object.assign({}, c.conditionAmounts || {}); }
+                groups.push(g);
+            }
+            g.qty++;
+        });
+        entries = groups.map(function(g){
+            const e = { kind: g.kind, qty: g.qty, side: g.side };
+            if(g.kind === 'vault') e.vaultId = g.vaultId;
+            else { e.name = g.name; e.rank = g.rank; e.res = g.res; e.vig = g.vig; e.notes = g.notes; }
+            if(g.conds && g.conds.length) { e.conds = g.conds; if(g.condAmt && Object.keys(g.condAmt).length) e.condAmt = g.condAmt; }
+            return e;
+        });
+    }
+    const encObj = { name: name, savedAt: Date.now(), saveKind: actualKind, entries: entries };
+    if(fight) encObj.fight = fight;
     const list = bpGetEncounters();
-    list.push({ name: name, savedAt: Date.now(), saveKind: (kind === 'prepared' ? 'prepared' : 'roster'), entries: groups.map(function(g){
-        const e = { kind: g.kind, qty: g.qty, side: g.side };
-        if(g.kind === 'vault') e.vaultId = g.vaultId;
-        else { e.name = g.name; e.rank = g.rank; e.res = g.res; e.vig = g.vig; e.notes = g.notes; }
-        if(g.conds && g.conds.length) { e.conds = g.conds; if(g.condAmt && Object.keys(g.condAmt).length) e.condAmt = g.condAmt; }
-        return e;
-    }) });
+    const oi = bpFindOverwriteIndex(name);
+    let savedIdx;
+    if(oi >= 0) { list[oi] = encObj; savedIdx = oi; }
+    else { list.push(encObj); savedIdx = list.length - 1; }
     bpSaveEncounters(list);
-    if(typeof showNotice === 'function') showNotice('Saved "' + name + '" (' + combatants.length + ' combatants).');
+    // An edit session now tracks the slot just written (covers rename-to-new);
+    // an in-progress save becomes the slot a later mid-combat save overwrites.
+    if(window._bpEditingEncounter) window._bpEditingEncounter = { index: savedIdx, name: name, currentName: name };
+    if(actualKind === 'in-progress') window._bpResumedEncounter = { index: savedIdx, name: name };
+    if(typeof showNotice === 'function') showNotice('Saved "' + name + '" (' + combatants.length + ' combatants' + (oi >= 0 ? ', updated in place' : '') + (actualKind === 'in-progress' ? ' — mid-fight state saved' : '') + ').');
     bpRenderEncounterList();
     if(typeof bpRenderFightEntry === 'function') bpRenderFightEntry();
     return true;
@@ -18695,11 +18802,12 @@ function bpRenderEncounterList() {
         const n = (enc.entries || []).reduce(function(a, e){ return a + (Math.max(1, parseInt(e.qty, 10) || 1)); }, 0);
         const nm = (typeof _bpEsc === 'function') ? _bpEsc(enc.name || 'Untitled') : (enc.name || 'Untitled');
         const when = enc.savedAt ? new Date(enc.savedAt).toLocaleDateString() : '';
-        const kindLbl = enc.saveKind === 'prepared' ? '🎯 Prepared battle' : '💾 Saved roster';
+        const kindLbl = bpEncKindLabel(enc);
         return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
             + '<span style="flex:1;font-size:0.82em;font-weight:bold;">' + nm + ' <span style="color:#666;font-weight:normal;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span>'
-            + '<br><span style="font-size:0.85em;color:#999;font-weight:normal;">' + kindLbl + (when ? ' · ' + when : '') + ' · starts at full Health/Focus</span></span>'
+            + '<br><span style="font-size:0.85em;color:#999;font-weight:normal;">' + kindLbl + (when ? ' · ' + when : '') + '</span></span>'
             + '<button onclick="bpLoadEncounter(' + i + ')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#0a3a5a;border:1px solid #1a6a9a;border-radius:4px;color:#aad4ff;cursor:pointer;">Load</button>'
+            + '<button onclick="bpEditEncounter(\' + i + \')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#222;border:1px solid #555;border-radius:4px;color:#ddd;cursor:pointer;">✎ Edit</button>'
             + '<button onclick="bpDeleteEncounter(' + i + ')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
             + '</div>';
     }).join('');
@@ -18713,13 +18821,16 @@ function bpDeleteEncounter(i) {
 function bpLoadEncounter(i) {
     const enc = bpGetEncounters()[i];
     if(!enc) return;
+    window._bpEditingEncounter = null;
+    const entryFirstIdx = [];
     combatants = []; initiativeOrder = []; combatTurn = -1; combatPhase = 'lobby';
     initiativeRolls = {}; bonusOrder = []; mainOrder = []; bonusTurn = 0; mainTurn = 0;
-    combatRound = 1;
+    combatRound = 1; combatPlot = 0; combatKarma = 0;
     let skipped = 0, added = 0;
-    (enc.entries || []).forEach(function(e) {
+    (enc.entries || []).forEach(function(e, ei) {
         const qty = Math.max(1, parseInt(e.qty, 10) || 1);
         const _before = combatants.length;
+        entryFirstIdx[ei] = -1;
         if(e.kind === 'vault') {
             let hero = null;
             try { hero = getVault().find(function(h){ return h && h.vaultId === e.vaultId; }); } catch(err) {}
@@ -18741,13 +18852,49 @@ function bpLoadEncounter(i) {
         }
         // Restore any conditions saved with this entry, including custom
         // per-turn amounts, onto the combatants this entry just created.
+        if(combatants.length > _before) entryFirstIdx[ei] = _before;
         if(e.conds && e.conds.length) {
             for(let k = _before; k < combatants.length; k++) {
                 combatants[k].conditions = e.conds.slice();
                 combatants[k].conditionAmounts = Object.assign({}, e.condAmt || {});
             }
         }
+        // In-progress saves: restore this combatant's exact mid-fight state.
+        if(e.state) {
+            for(let k = _before; k < combatants.length; k++) {
+                const cc = combatants[k], st = e.state;
+                if(typeof st.maxHp === 'number') cc.maxHp = st.maxHp;
+                if(typeof st.maxFp === 'number') cc.maxFp = st.maxFp;
+                if(typeof st.hp === 'number') cc.currentHp = Math.max(0, Math.min(cc.maxHp, st.hp));
+                if(typeof st.fp === 'number') cc.currentFp = Math.max(0, Math.min(cc.maxFp, st.fp));
+                cc.usedPowers = Array.isArray(st.used) ? st.used.slice() : [];
+                cc.karma = st.karma || 0;
+                if(st.status) cc.status = st.status;
+                if(st.initiative) cc.initiative = st.initiative;
+            }
+        }
     });
+    // In-progress saves: restore the fight itself — round, narrator pools,
+    // and (if initiative had been rolled) the phase, turn order and rolls.
+    // Saved orders reference entry indexes; translate them to the new uids,
+    // dropping any entry whose hero is no longer in the vault.
+    if(enc.saveKind === 'in-progress' && enc.fight) {
+        const f = enc.fight;
+        combatRound = f.round || 1; combatPlot = f.plot || 0; combatKarma = f.karma || 0;
+        if(f.phase && f.phase !== 'lobby') {
+            const uidOf = function(ei) { const ci = entryFirstIdx[ei]; return (typeof ci === 'number' && ci >= 0 && combatants[ci]) ? combatants[ci].uid : null; };
+            const mapArr = function(arr) { return (arr || []).map(uidOf).filter(Boolean); };
+            initiativeOrder = mapArr(f.order); bonusOrder = mapArr(f.bonusOrder); mainOrder = mapArr(f.mainOrder);
+            combatTurn = (typeof f.turn === 'number') ? f.turn : -1;
+            bonusTurn = f.bonusTurn || 0; mainTurn = f.mainTurn || 0;
+            initiativeRolls = {};
+            Object.keys(f.rolls || {}).forEach(function(ei) { const u = uidOf(parseInt(ei, 10)); if(u) initiativeRolls[u] = f.rolls[ei]; });
+            combatPhase = f.phase;
+        }
+        window._bpResumedEncounter = { index: i, name: enc.name || '' };
+    } else {
+        window._bpResumedEncounter = null;
+    }
     if(typeof renderActiveCombat === 'function') renderActiveCombat();
     if(typeof showNotice === 'function') showNotice('Loaded "' + (enc.name || 'encounter') + '": ' + added + ' combatant' + (added === 1 ? '' : 's') + (skipped ? ' (' + skipped + ' skipped — not in vault)' : '') + '.');
 }
