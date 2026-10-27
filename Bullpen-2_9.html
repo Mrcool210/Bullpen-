@@ -18645,28 +18645,41 @@ function bpEffDice(sel) {
     }
     return out;
 }
-// Suggested net edge/trouble from conditions in play (Core condition
-// texts): the attacker's Stunned / Demoralized / Blinded / Exhausted give
-// trouble (Prone: trouble on close attacks); a Stunned target gives
-// attacks against them an edge (Prone target: close attacks only). One
-// edge total from targets — the flow rolls once against every target.
+// Suggested net edge/trouble from conditions in play (book condition
+// texts): the attacker's Demoralized / Exhausted give trouble on all
+// actions, Blinded gives trouble on checks needing line of sight, Prone
+// gives trouble on Melee attacks, Pinned on Melee/Agility checks, and
+// Stunned gives trouble on actions (the app's displayed Stunned text is
+// the Avengers Expansion p.101 version). On the target side: Stunned and
+// Blinded targets give attacks against them an edge, a Prone target
+// gives close attacks an edge but ranged attacks trouble, and a Grabbed
+// target gives attacks against the entangled pair trouble. Caps: one
+// edge and one trouble total from targets — the flow rolls once against
+// every target, and the stepper covers anything more specific.
 function bpEdgeSuggestion(actor, sel) {
     const notes = [];
     let edges = 0, troubles = 0;
     const has = function(c, nm) { return ((c && c.conditions) || []).some(function(x){ return String(x).toLowerCase() === nm; }); };
     if(has(actor, 'stunned')) { troubles++; notes.push('you are Stunned — trouble on your actions'); }
-    if(has(actor, 'demoralized')) { troubles++; notes.push('you are Demoralized — trouble'); }
-    if(has(actor, 'blinded')) { troubles++; notes.push('you are Blinded — trouble on attacks'); }
-    if(has(actor, 'exhausted')) { troubles++; notes.push('you are Exhausted — trouble'); }
-    if(has(actor, 'prone') && sel.ability === 'melee') { troubles++; notes.push('you are Prone — trouble on close attacks'); }
-    let tEdge = '';
-    (sel.targets || []).forEach(function(u) {
-        const t = combatants.find(function(x){ return x.uid === u; });
-        if(!t) return;
-        if(has(t, 'stunned')) tEdge = 'a target is Stunned — attacks against them have an edge';
-        else if(has(t, 'prone') && sel.ability === 'melee' && !tEdge) tEdge = 'a target is Prone — close attacks against them have an edge';
-    });
-    if(tEdge) { edges++; notes.push(tEdge); }
+    if(has(actor, 'demoralized')) { troubles++; notes.push('you are Demoralized — trouble on all action checks'); }
+    if(has(actor, 'blinded')) { troubles++; notes.push('you are Blinded — trouble on checks that need line of sight'); }
+    if(has(actor, 'exhausted')) { troubles++; notes.push('you are Exhausted — trouble on all actions'); }
+    if(has(actor, 'prone') && sel.ability === 'melee') { troubles++; notes.push('you are Prone — trouble on Melee attacks'); }
+    if(has(actor, 'pinned') && (sel.ability === 'melee' || sel.ability === 'agility')) { troubles++; notes.push('you are Pinned — trouble on Melee and Agility checks'); }
+    if(sel.damageMode) {
+        let tEdge = '', tTrouble = '';
+        (sel.targets || []).forEach(function(u) {
+            const t = combatants.find(function(x){ return x.uid === u; });
+            if(!t) return;
+            if(has(t, 'stunned')) tEdge = 'a target is Stunned — attacks against them have an edge';
+            else if(has(t, 'blinded') && !tEdge) tEdge = 'a target is Blinded — attacks they would need sight to dodge have an edge';
+            else if(has(t, 'prone') && sel.ability === 'melee' && !tEdge) tEdge = 'a target is Prone — close attacks against them have an edge';
+            if(has(t, 'prone') && sel.ability !== 'melee' && !tTrouble) tTrouble = 'a target is Prone — ranged attacks against them have trouble';
+            if(has(t, 'grabbed') && !tTrouble) tTrouble = 'a target is Grabbed — attacks against the entangled pair have trouble (an edge instead if the attacker does not care who gets hit)';
+        });
+        if(tEdge) { edges++; notes.push(tEdge); }
+        if(tTrouble) { troubles++; notes.push(tTrouble); }
+    }
     return { net: Math.max(-3, Math.min(3, edges - troubles)), notes: notes };
 }
 function bpRollTotal(actor, sel) {
