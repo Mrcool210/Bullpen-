@@ -18861,7 +18861,6 @@ function bpTurnRenderResolve() {
             const fOn = !!sel.fantastic;
             const fBtn = function(val, lbl) { const on = fOn === !!val; return '<button onclick="bpTurnSet(\'fantastic\',' + (val ? 1 : 0) + ')" style="flex:1; padding:7px 2px; font-size:0.8em; font-weight:bold; background:' + (on ? '#4a3800' : '#1c1c1c') + '; border:1px solid ' + (on ? '#ffcc44' : '#444') + '; border-radius:6px; color:' + (on ? '#ffcc66' : '#aaa') + '; cursor:pointer;">' + lbl + '</button>'; };
             html += '<div style="display:flex; align-items:center; gap:8px;"><span style="flex:1; font-size:0.82em; color:#bbb;">Fantastic?<br><span style="font-size:0.85em; color:#777;">The Marvel die came up M</span></span><div style="display:flex; gap:5px; flex:1;">' + fBtn(0, 'No') + fBtn(1, '&#9733; Yes — M') + '</div></div>';
-            if(sel.damageMode && !fOn) html += bpTurnStepRow('Marvel die (for damage)', 'marvelDie', sel.marvelDie, 'The number showing on the Marvel die itself');
             if(sel.damageMode && fOn) html += '<div style="font-size:0.8em; color:#ffcc66;">The Marvel die counts as 6 (M) for damage.</div>';
         }
         if(!sel.edgeTouched) { const sg = bpEdgeSuggestion(actor, sel); sel.edgeNet = sg.net; sel.edgeNotes = sg.notes; bpSyncRerolls(sel); }
@@ -18928,6 +18927,33 @@ function bpTurnRenderResolve() {
     html += '<button ' + (canConfirm ? '' : 'disabled ') + 'onclick="bpTurnConfirm()" style="padding:11px; font-size:0.9em; font-weight:bold; background:' + (canConfirm ? '#1a4a00' : '#222') + '; border:1px solid ' + (canConfirm ? '#44aa22' : '#444') + '; border-radius:6px; color:' + (canConfirm ? '#aaffaa' : '#666') + '; cursor:pointer;">' + (sel.damageMode ? '&#10003; Apply' : '&#10003; Confirm') + '</button>';
     _showPickerModal(title, html);
 }
+// Follow-up prompt for 'I roll' damage (Ben, 2026-10-27): shown only
+// once a hit is known to deal damage. The player enters what the Marvel
+// die showed; entering 6 means it was an M after all, so the roll
+// upgrades to Fantastic when the damage is applied.
+function bpShowMarvelPrompt(sel, actor) {
+    const names = sel.targets.map(function(u){ const t = combatants.find(function(x){ return x.uid === u; }); return t ? (t.label || t.baseName) : ''; }).filter(Boolean).join(', ');
+    const b = 'width:40px; height:40px; font-size:1.1em; background:#222; border:1px solid #555; border-radius:6px; color:#eee; cursor:pointer;';
+    _showPickerModal('&#127922; ' + _bpEsc(actor.label || actor.baseName) + ' — ' + _bpEsc(sel.name),
+        '<div style="font-size:0.95em; color:#dde;">It hits' + (names ? ' — ' + _bpEsc(names) : '') + '.</div>'
+        + '<div style="display:flex; align-items:center; gap:8px;"><span style="flex:1; font-size:0.85em; color:#bbb;">What did the Marvel die show?<br><span style="font-size:0.85em; color:#777;">The number on the Marvel die itself — damage is that number &times; the multiplier + the ability score.</span></span>'
+        + '<button onclick="bpMarvelAdj(-1)" style="' + b + '">&minus;</button>'
+        + '<span style="min-width:36px; text-align:center; font-weight:bold; font-size:1.2em; color:#ffcc66;">' + (sel.marvelDie === 6 ? 'M' : sel.marvelDie) + '</span>'
+        + '<button onclick="bpMarvelAdj(1)" style="' + b + '">+</button></div>'
+        + '<button onclick="bpTurnMarvelDieGo()" style="padding:11px; font-size:0.9em; font-weight:bold; background:#1a4a00; border:1px solid #44aa22; border-radius:6px; color:#aaffaa; cursor:pointer;">&#10003; Apply damage</button>');
+}
+function bpMarvelAdj(delta) {
+    const sel = window._bpTurnSel; if(!sel) return;
+    sel.marvelDie = Math.min(6, Math.max(1, (sel.marvelDie || 3) + delta));
+    const actor = combatants.find(function(x){ return x.uid === sel.actorUid; });
+    if(actor) bpShowMarvelPrompt(sel, actor);
+}
+function bpTurnMarvelDieGo() {
+    const sel = window._bpTurnSel; if(!sel) return;
+    sel._marvelAsked = true;
+    if(sel.marvelDie === 6) sel.fantastic = true; // it was an M after all
+    bpTurnConfirm();
+}
 function bpTurnConfirm() {
     const sel = window._bpTurnSel; if(!sel) return;
     const actor = combatants.find(function(x){ return x.uid === sel.actorUid; });
@@ -18935,10 +18961,15 @@ function bpTurnConfirm() {
     const fixedCost = sel.kind === 'power' ? bpFixedFocusCost(sel.name) : 0;
     const spec = sel.kind === 'power' ? bpSpendSpec(sel.name) : null;
     let spent = fixedCost + (spec ? (sel.focusSpent || 0) : 0);
-    if(spent > 0) {
-        const paid = Math.min(spent, Math.max(0, actor.currentFp));
-        actor.currentFp -= paid;
-        spent = paid;
+    if(sel._costPaid) spent = sel._spentPaid || 0;
+    else {
+        if(spent > 0) {
+            const paid = Math.min(spent, Math.max(0, actor.currentFp));
+            actor.currentFp -= paid;
+            spent = paid;
+        }
+        sel._costPaid = true;
+        sel._spentPaid = spent;
     }
     if(sel.kind === 'power') {
         if(!Array.isArray(actor.usedPowers)) actor.usedPowers = [];
@@ -18952,6 +18983,20 @@ function bpTurnConfirm() {
         actor.status = sel.name;
         actor.lastEvent = sel.name + (sel.targets.length ? ' (target: ' + sel.targets.map(function(u){ const t = combatants.find(function(x){ return x.uid === u; }); return t ? (t.label || t.baseName) : ''; }).join(', ') + ')' : '');
     } else if(sel.damageMode) {
+        if(sel.rollMode === 'manual' && !sel.fantastic && !sel._marvelAsked) {
+            let needsDie = false;
+            sel.targets.forEach(function(u) {
+                const t = combatants.find(function(x){ return x.uid === u; });
+                if(!t || needsDie) return;
+                const res = bpResolveOutcome(actor, t, sel);
+                if(res.outcome === 'miss') return;
+                const frac = bpOutcomeSpec(sel.name)[res.outcome === 'fantastic' ? 'fantastic' : 'success'];
+                if(!(frac > 0)) return;
+                const r = bpComputeDamage(actor, t, Object.assign({}, sel, { outcome: res.outcome, marvelDie: 1 }));
+                if(!r.negated) needsDie = true;
+            });
+            if(needsDie) { bpShowMarvelPrompt(sel, actor); return; }
+        }
         const parts = [];
         resultRows = [];
         let drainTotal = 0;
