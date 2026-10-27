@@ -18570,7 +18570,8 @@ function bpTurnStart(safeUid, kind, name, ability) {
     if(!actor) return;
     const sel = { actorUid: actor.uid, kind: kind, name: name || '', ability: ability || 'melee',
         targets: [], d1: 3, d2: 3, marvelDie: 3, tn: {}, rollMode: 'manual', rolled: false,
-        focusSpent: 0, resource: 'hp', damageMode: kind === 'attack' };
+        focusSpent: 0, resource: 'hp', damageMode: kind === 'attack',
+        edgeNet: 0, edgeTouched: false, edgeNotes: [], rerolls: [] };
     if(kind === 'power') {
         const pd = (typeof powersData !== 'undefined' && powersData[name]) || null;
         const fx = bpPowerFx(name);
@@ -18593,16 +18594,94 @@ function bpTargetTN(sel, target) {
     if(sel.tnDefault) return sel.tnDefault;
     return bpDefaultTN(target, sel.ability);
 }
+function bpSyncRerolls(sel) {
+    if(!Array.isArray(sel.rerolls)) sel.rerolls = [];
+    const n = Math.abs(sel.edgeNet || 0);
+    while(sel.rerolls.length < n) sel.rerolls.push({ die: 'd1', val: 1 });
+    sel.rerolls.length = n;
+}
+// Dice state after applying the first `upto` edge/trouble rerolls (all of
+// them when upto is null). Book: an edge rerolls one die and keeps the
+// better number; trouble always rerolls the BEST die and keeps the worse
+// (Core p.14) — a stored trouble pick that is not a best die is coerced to
+// one. A natural 6 M 6 is an ultimate Fantastic: it ignores trouble, so
+// no rerolls apply at all.
+function bpDiceState(sel, upto) {
+    const out = { d1: sel.d1 || 0, d2: sel.d2 || 0, m: sel.marvelDie || 0 };
+    if(out.d1 === 6 && out.d2 === 6 && out.m === 6) return out;
+    const net = sel.edgeNet || 0;
+    const rrs = sel.rerolls || [];
+    const n = Math.min(upto == null ? rrs.length : upto, Math.abs(net), rrs.length);
+    for(let i = 0; i < n; i++) {
+        let die = rrs[i].die || 'd1';
+        if(['d1', 'd2', 'm'].indexOf(die) === -1) die = 'd1';
+        const val = Math.min(6, Math.max(1, rrs[i].val || 1));
+        if(net < 0) {
+            const mx = Math.max(out.d1, out.d2, out.m);
+            if(out[die] !== mx) die = out.m === mx ? 'm' : (out.d1 === mx ? 'd1' : 'd2');
+        }
+        out[die] = net > 0 ? Math.max(out[die], val) : Math.min(out[die], val);
+    }
+    return out;
+}
+function bpEffDice(sel) {
+    const st = bpDiceState(sel, null);
+    const out = { d1: st.d1, d2: st.d2, m: st.m, notes: [],
+        ultimate: (sel.d1 || 0) === 6 && (sel.d2 || 0) === 6 && (sel.marvelDie || 0) === 6 };
+    if(out.ultimate) return out;
+    const net = sel.edgeNet || 0;
+    const rrs = sel.rerolls || [];
+    for(let i = 0; i < Math.min(Math.abs(net), rrs.length); i++) {
+        const before = bpDiceState(sel, i);
+        const after = bpDiceState(sel, i + 1);
+        let die = rrs[i].die || 'd1';
+        if(['d1', 'd2', 'm'].indexOf(die) === -1) die = 'd1';
+        if(net < 0) {
+            const mx = Math.max(before.d1, before.d2, before.m);
+            if(before[die] !== mx) die = before.m === mx ? 'm' : (before.d1 === mx ? 'd1' : 'd2');
+        }
+        const lbl = die === 'm' ? 'Marvel die' : (die === 'd1' ? 'Die 1' : 'Die 2');
+        out.notes.push((net > 0 ? 'Edge' : 'Trouble') + ' reroll — ' + lbl + ': ' + before[die] + ' &rarr; ' + (rrs[i].val || 1) + ' (kept ' + after[die] + ')');
+    }
+    return out;
+}
+// Suggested net edge/trouble from conditions in play (Core condition
+// texts): the attacker's Stunned / Demoralized / Blinded / Exhausted give
+// trouble (Prone: trouble on close attacks); a Stunned target gives
+// attacks against them an edge (Prone target: close attacks only). One
+// edge total from targets — the flow rolls once against every target.
+function bpEdgeSuggestion(actor, sel) {
+    const notes = [];
+    let edges = 0, troubles = 0;
+    const has = function(c, nm) { return ((c && c.conditions) || []).some(function(x){ return String(x).toLowerCase() === nm; }); };
+    if(has(actor, 'stunned')) { troubles++; notes.push('you are Stunned — trouble on your actions'); }
+    if(has(actor, 'demoralized')) { troubles++; notes.push('you are Demoralized — trouble'); }
+    if(has(actor, 'blinded')) { troubles++; notes.push('you are Blinded — trouble on attacks'); }
+    if(has(actor, 'exhausted')) { troubles++; notes.push('you are Exhausted — trouble'); }
+    if(has(actor, 'prone') && sel.ability === 'melee') { troubles++; notes.push('you are Prone — trouble on close attacks'); }
+    let tEdge = '';
+    (sel.targets || []).forEach(function(u) {
+        const t = combatants.find(function(x){ return x.uid === u; });
+        if(!t) return;
+        if(has(t, 'stunned')) tEdge = 'a target is Stunned — attacks against them have an edge';
+        else if(has(t, 'prone') && sel.ability === 'melee' && !tEdge) tEdge = 'a target is Prone — close attacks against them have an edge';
+    });
+    if(tEdge) { edges++; notes.push(tEdge); }
+    return { net: Math.max(-3, Math.min(3, edges - troubles)), notes: notes };
+}
 function bpRollTotal(actor, sel) {
-    return (sel.d1 || 0) + (sel.d2 || 0) + (sel.marvelDie || 0) + bpAbilityScore(actor, sel.ability);
+    const e = bpEffDice(sel);
+    return e.d1 + e.d2 + e.m + bpAbilityScore(actor, sel.ability);
 }
 function bpResolveOutcome(actor, target, sel) {
     const total = bpRollTotal(actor, sel);
     const tn = bpTargetTN(sel, target);
-    const success = total >= tn;
-    const fantastic = success && sel.marvelDie === 6;
-    return { total: total, tn: tn, success: success, fantastic: fantastic,
-        fantasticFail: !success && sel.marvelDie === 6,
+    const e = bpEffDice(sel);
+    let success = total >= tn;
+    if(e.ultimate) success = true;
+    const fantastic = success && e.m === 6;
+    return { total: total, tn: tn, success: success, fantastic: fantastic, ultimate: !!e.ultimate,
+        fantasticFail: !success && e.m === 6,
         outcome: fantastic ? 'fantastic' : (success ? 'success' : 'miss') };
 }
 function bpProgramRoll() {
@@ -18611,6 +18690,19 @@ function bpProgramRoll() {
     sel.d2 = 1 + Math.floor(Math.random() * 6);
     sel.marvelDie = 1 + Math.floor(Math.random() * 6);
     sel.rolled = true;
+    sel.rerolls = [];
+    const net = sel.edgeNet || 0;
+    if(net !== 0 && !(sel.d1 === 6 && sel.d2 === 6 && sel.marvelDie === 6)) {
+        const cur = { d1: sel.d1, d2: sel.d2, m: sel.marvelDie };
+        for(let i = 0; i < Math.abs(net); i++) {
+            let die;
+            if(net > 0) die = (cur.d1 <= cur.d2 && cur.d1 <= cur.m) ? 'd1' : (cur.d2 <= cur.m ? 'd2' : 'm');
+            else die = (cur.m >= cur.d1 && cur.m >= cur.d2) ? 'm' : (cur.d1 >= cur.d2 ? 'd1' : 'd2');
+            const val = 1 + Math.floor(Math.random() * 6);
+            sel.rerolls.push({ die: die, val: val });
+            cur[die] = net > 0 ? Math.max(cur[die], val) : Math.min(cur[die], val);
+        }
+    }
     bpTurnRenderResolve();
 }
 function bpTurnTnAdj(uid, delta) {
@@ -18629,7 +18721,10 @@ function bpTurnToggleTarget(uid) {
 }
 function bpTurnSet(field, val) {
     const sel = window._bpTurnSel; if(!sel) return;
-    sel[field] = val;
+    if(field.indexOf('rrDie') === 0) {
+        const idx = parseInt(field.slice(5), 10);
+        if(Array.isArray(sel.rerolls) && sel.rerolls[idx]) sel.rerolls[idx].die = val;
+    } else sel[field] = val;
     bpTurnRenderResolve();
 }
 function bpTurnAdj(field, delta) {
@@ -18640,6 +18735,16 @@ function bpTurnAdj(field, delta) {
     if(field === 'focusSpent') {
         const cap = actor ? Math.max(0, actor.currentFp) : 99;
         sel.focusSpent = Math.min(cap, Math.max(0, (sel.focusSpent || 0) + delta));
+    }
+    if(field === 'edgeNet') {
+        sel.edgeTouched = true;
+        sel.edgeNet = Math.min(3, Math.max(-3, (sel.edgeNet || 0) + delta));
+        bpSyncRerolls(sel);
+    }
+    if(field.indexOf('rrVal') === 0) {
+        const idx = parseInt(field.slice(5), 10);
+        bpSyncRerolls(sel);
+        if(sel.rerolls[idx]) sel.rerolls[idx].val = Math.min(6, Math.max(1, (sel.rerolls[idx].val || 1) + delta));
     }
     bpTurnRenderResolve();
 }
@@ -18685,6 +18790,33 @@ function bpTurnRenderResolve() {
             html += bpTurnStepRow('Second die', 'd2', sel.d2, '');
             html += bpTurnStepRow('Marvel die', 'marvelDie', sel.marvelDie, 'A 6 is an M — Fantastic on a success');
         }
+        if(!sel.edgeTouched) { const sg = bpEdgeSuggestion(actor, sel); sel.edgeNet = sg.net; sel.edgeNotes = sg.notes; bpSyncRerolls(sel); }
+        const eNet = sel.edgeNet || 0;
+        const eLbl = eNet > 0 ? 'Edge &times;' + eNet : (eNet < 0 ? 'Trouble &times;' + (-eNet) : '&mdash;');
+        const eBtn = 'width:34px; height:34px; font-size:1em; background:#222; border:1px solid #555; border-radius:6px; color:#eee; cursor:pointer;';
+        html += '<div style="display:flex; align-items:center; gap:8px;">'
+            + '<span style="flex:1; font-size:0.82em; color:#bbb;">Edge / Trouble<br><span style="font-size:0.85em; color:#777;">' + ((sel.edgeNotes && sel.edgeNotes.length) ? 'From conditions: ' + sel.edgeNotes.join('; ') + '. Adjust if more applies.' : 'Edges and troubles cancel each other out.') + '</span></span>'
+            + '<button onclick="bpTurnAdj(\'edgeNet\',-1)" style="' + eBtn + '">&minus;</button>'
+            + '<span style="min-width:76px; text-align:center; font-weight:bold; color:' + (eNet > 0 ? '#88dd88' : (eNet < 0 ? '#ff8888' : '#aaa')) + ';">' + eLbl + '</span>'
+            + '<button onclick="bpTurnAdj(\'edgeNet\',1)" style="' + eBtn + '">+</button></div>';
+        const effNow = bpEffDice(sel);
+        if(eNet !== 0 && sel.rollMode !== 'program') {
+            for(let ri = 0; ri < Math.abs(eNet); ri++) {
+                const rr = (sel.rerolls || [])[ri] || { die: 'd1', val: 1 };
+                let allowed = ['d1', 'd2', 'm'];
+                if(eNet < 0) { const st = bpDiceState(sel, ri); const mx = Math.max(st.d1, st.d2, st.m); allowed = allowed.filter(function(k){ return st[k] === mx; }); }
+                const curDie = allowed.indexOf(rr.die) !== -1 ? rr.die : allowed[0];
+                const dieBtns = allowed.map(function(k) {
+                    const on = curDie === k;
+                    const lbl = k === 'm' ? 'Marvel' : (k === 'd1' ? 'Die 1' : 'Die 2');
+                    return '<button onclick="bpTurnSet(\'rrDie' + ri + '\',\'' + k + '\')" style="padding:5px 8px; font-size:0.74em; font-weight:bold; background:' + (on ? '#4a3800' : '#1c1c1c') + '; border:1px solid ' + (on ? '#ffcc44' : '#444') + '; border-radius:5px; color:' + (on ? '#ffcc66' : '#aaa') + '; cursor:pointer;">' + lbl + '</button>';
+                }).join('');
+                html += '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span style="font-size:0.8em; color:#bbb;">Reroll ' + (ri + 1) + ' ' + (eNet < 0 ? '(trouble — best die, keep the worse)' : '(edge — keep the better)') + '</span>' + dieBtns + '</div>'
+                    + bpTurnStepRow('Rerolled value', 'rrVal' + ri, rr.val, '');
+            }
+        }
+        if(effNow.notes.length) html += '<div style="font-size:0.8em; color:#bbb;">' + effNow.notes.join('<br>') + '<br>Effective dice: ' + effNow.d1 + ' + ' + effNow.d2 + ' + ' + (effNow.m === 6 ? 'M' : effNow.m) + '</div>';
+        if(effNow.ultimate) html += '<div style="font-size:0.85em; color:#ffcc44; font-weight:bold;">&#9733; Ultimate Fantastic (6 M 6) — automatic success, trouble ignored.</div>';
         html += '<div style="font-size:0.85em; color:#aee;">Check total: <strong>' + bpRollTotal(actor, sel) + '</strong> <span style="color:#777;">(dice + ' + _bpEsc(sel.ability) + ' score ' + bpAbilityScore(actor, sel.ability) + ')' + (sel.damageMode ? ' &middot; damage = Marvel die &times; multiplier + score' : '') + '</span></div>';
     }
     if(spec) {
@@ -18707,12 +18839,13 @@ function bpTurnRenderResolve() {
             return '<button onclick="bpTurnToggleTarget(\'' + t.uid + '\')" style="width:100%; text-align:left; padding:8px 10px; background:' + (on ? '#2a2410' : '#1a1a1a') + '; border:1px solid ' + (on ? '#ffcc44' : '#3a3a3a') + '; border-radius:6px; color:#ddd; cursor:pointer; font-size:0.84em;">' + head + '</button>';
         }
         const res = bpResolveOutcome(actor, t, sel);
-        const verdict = res.fantastic ? '<span style="color:#ffcc44;">&#9733; Fantastic!</span>'
+        const verdict = res.ultimate ? '<span style="color:#ffcc44;">&#9733; Ultimate Fantastic — automatic success!</span>'
+            : res.fantastic ? '<span style="color:#ffcc44;">&#9733; Fantastic!</span>'
             : res.success ? '<span style="color:#88dd88;">&#10003; Success</span>'
             : '<span style="color:#ff8888;">&#10007; ' + (res.fantasticFail ? 'Fantastic failure' : 'Failed') + '</span>';
         let dmgTxt = '';
         if(sel.damageMode && res.outcome !== 'miss') {
-            const r = bpComputeDamage(actor, t, Object.assign({}, sel, { outcome: res.outcome }));
+            const r = bpComputeDamage(actor, t, Object.assign({}, sel, { outcome: res.outcome, marvelDie: bpEffDice(sel).m }));
             dmgTxt = r.negated ? ' <span style="color:#ff8888;">(DR negates)</span>' : ' <span style="color:#ffcc66;">&rarr; ' + r.damage + ' dmg</span>';
         }
         return '<div style="padding:8px 10px; background:#2a2410; border:1px solid #ffcc44; border-radius:6px;">'
@@ -18765,7 +18898,7 @@ function bpTurnConfirm() {
             if(!t) return;
             targetNames.push(t.label || t.baseName);
             const res = bpResolveOutcome(actor, t, sel);
-            const r = bpComputeDamage(actor, t, Object.assign({}, sel, { outcome: res.outcome }));
+            const r = bpComputeDamage(actor, t, Object.assign({}, sel, { outcome: res.outcome, marvelDie: bpEffDice(sel).m }));
             if(res.outcome === 'miss') { t.lastEvent = _bpEsc(actor.baseName || '') + ' missed with ' + sel.name + ' (' + res.total + ' vs TN ' + res.tn + ').'; parts.push((t.label || t.baseName) + ': miss'); resultRows.push({ name: t.label || t.baseName, state: 'miss', total: res.total, tn: res.tn, fantasticFail: res.fantasticFail }); return; }
             if(r.negated) { t.lastEvent = (actor.baseName || '') + "'s " + sel.name + ' was negated by DR ' + r.dr + '.'; parts.push((t.label || t.baseName) + ': negated by DR'); resultRows.push({ name: t.label || t.baseName, state: 'negated', dr: r.dr, total: res.total, tn: res.tn }); return; }
             const before = sel.resource === 'fp' ? t.currentFp : t.currentHp;
@@ -18846,7 +18979,8 @@ function bpTurnConfirm() {
             return '<div style="font-size:1.05em; color:#ffd9d9; padding:8px 10px; background:#2a0d0d; border:1px solid #773333; border-radius:6px;">' + (x.fantastic ? '<span style="color:#ffcc44;">&#9733; Fantastic! </span>' : '') + _bpEsc(x.name) + ' takes <strong style="color:#ff6666; font-size:1.25em;">' + x.damage + '</strong> ' + resLabel + ' damage <span style="color:#aa8888; font-size:0.82em;">(rolled ' + x.total + ' vs TN ' + x.tn + ' &middot; ' + x.before + ' &rarr; ' + x.after + ')</span>' + (x.conditions && x.conditions.length ? '<br><span style="color:#ffaa55; font-size:0.85em;">Now: ' + x.conditions.join(', ') + '</span>' : '') + '</div>';
         }).join('');
         _showPickerModal('&#128165; ' + _bpEsc(actor.label || actor.baseName) + ' — ' + _bpEsc(sel.name),
-            rows + (spent ? '<div style="font-size:0.82em; color:#ddaaff;">Spent ' + spent + ' Focus</div>' : '')
+            rows + (bpEffDice(sel).notes.length ? '<div style="font-size:0.82em; color:#bbb;">' + bpEffDice(sel).notes.join('<br>') + '</div>' : '')
+            + (spent ? '<div style="font-size:0.82em; color:#ddaaff;">Spent ' + spent + ' Focus</div>' : '')
             + extraLines.map(function(l){ return '<div style="font-size:0.85em; color:#aaffaa;">' + l + '</div>'; }).join('')
             + '<button onclick="_closePickerModal()" style="padding:10px; font-size:0.9em; font-weight:bold; background:#333; border:1px solid #555; border-radius:6px; color:#eee; cursor:pointer;">OK</button>');
     } else if(typeof showNotice === 'function') showNotice(notice);
