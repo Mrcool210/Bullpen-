@@ -19276,6 +19276,7 @@ function bpRenderFightEntry() {
         }).join('');
     }
     h += '</div>';
+    if(typeof bpCampaignsHtml === 'function') h += bpCampaignsHtml();
     el.innerHTML = h;
 }
 
@@ -19475,11 +19476,517 @@ function bpSetupFromCombat() {
 // staged fighters remain staged, and the entry panel offers Resume Setup /
 // Go to Combat for them.
 function bpEndFightToEntry() {
+    if(window._bpCampaignCtx) bpCampaignWriteBack(true);
     endCombat();
     bpSetFightPhase('entry');
 }
 
 window.addEventListener('DOMContentLoaded', function() { try { bpApplyFightPhase(); } catch(e) {} });
+
+
+// ---- Campaigns ----
+// A campaign is a container the narrator builds ahead of time: a party
+// of Vault heroes whose Health / Focus / Karma / conditions PERSIST
+// between fights, plus an ordered queue of encounters (enemy lineups in
+// the same entry format as saved battles). Launching an encounter
+// stages the party at their carried-over state alongside the encounter's
+// fresh enemies; ending the fight (or saving it mid-fight) writes the
+// party's state back. Between encounters, the rest step applies the
+// book's downtime healing (Core, Healing): lost Health and Focus equal
+// to rank per hour of taking it easy, double that per hour of sleep.
+// Healing Factor works outside combat too and brings Health back to
+// full; earned Karma fades after a full night's sleep for anyone
+// without the Heroic tag (Core, Karma and Acting Heroic).
+var BP_CAMP_KEY = 'bullpen_campaigns_v1';
+function bpGetCampaigns() { try { return JSON.parse(_lsGet(BP_CAMP_KEY) || '[]'); } catch(e) { return []; } }
+function bpSaveCampaigns(list) { try { _lsSet(BP_CAMP_KEY, JSON.stringify(list)); } catch(e) {} }
+function bpCampaignById(id) { return bpGetCampaigns().find(function(c){ return c.id === id; }) || null; }
+function bpSaveCampaign(camp) {
+    const list = bpGetCampaigns();
+    const i = list.findIndex(function(c){ return c.id === camp.id; });
+    if(i >= 0) list[i] = camp; else list.push(camp);
+    bpSaveCampaigns(list);
+}
+function bpCampaignHeroInfo(vaultId) {
+    let hero = null;
+    try { hero = getVault().find(function(h){ return h && h.vaultId === vaultId; }); } catch(e) {}
+    if(!hero) return null;
+    const res = parseInt((hero.stats && hero.stats.resilience) || hero.resilience || 0, 10) || 0;
+    const vig = parseInt((hero.stats && hero.stats.vigilance) || hero.vigilance || 0, 10) || 0;
+    const rank = parseInt(hero.rank || 1, 10) || 1;
+    const _nh = (typeof normalizeHeroSave === 'function') ? normalizeHeroSave(hero) : hero;
+    const traits = [].concat(_nh.traits || [], _nh.traitBonus || []);
+    return {
+        vaultId: vaultId,
+        name: hero.heroName || hero.realName || hero.name || 'Hero',
+        rank: rank, res: res,
+        maxHp: calcHp(res, rank),
+        maxFp: calcFp(vig, rank, traits),
+        hasHF: (hero.powers || []).indexOf('Healing Factor') !== -1,
+        heroic: (hero.tags || []).indexOf('Heroic') !== -1
+    };
+}
+// One party member's effective state; stored hp/fp of null means the
+// hero has not fought in this campaign yet and starts at full.
+function bpCampaignPartyState(camp, p) {
+    const info = bpCampaignHeroInfo(p.vaultId);
+    if(!info) return null;
+    return {
+        info: info,
+        hp: (typeof p.hp === 'number') ? Math.max(0, Math.min(info.maxHp, p.hp)) : info.maxHp,
+        fp: (typeof p.fp === 'number') ? Math.max(0, Math.min(info.maxFp, p.fp)) : info.maxFp,
+        karma: p.karma || 0,
+        conds: Array.isArray(p.conds) ? p.conds.slice() : [],
+        condAmt: Object.assign({}, p.condAmt || {})
+    };
+}
+// Pure rest math (Core, Healing). Healing Factor restores Health only —
+// never Focus — and outside combat it brings Health back to full.
+function bpCampaignRestCalc(state, info, hours, mode) {
+    const mult = (mode === 'sleep') ? 2 : 1;
+    const gain = info.rank * Math.max(0, parseInt(hours, 10) || 0) * mult;
+    let hp = Math.min(info.maxHp, state.hp + gain);
+    const fp = Math.min(info.maxFp, state.fp + gain);
+    if(info.hasHF) hp = info.maxHp;
+    let karma = state.karma || 0, karmaFaded = false;
+    if(mode === 'sleep' && hours >= 8 && !info.heroic && karma > 0) { karma = 0; karmaFaded = true; }
+    return { hp: hp, fp: fp, karma: karma, hpGain: hp - state.hp, fpGain: fp - state.fp, karmaFaded: karmaFaded };
+}
+function bpCampaignCaptureState(c) {
+    return {
+        hp: c.currentHp, fp: c.currentFp, karma: c.karma || 0,
+        conds: (c.conditions || []).slice(),
+        condAmt: Object.assign({}, c.conditionAmounts || {})
+    };
+}
+// Saved-battle entry list for the currently staged combatants, minus
+// hero-side party members (the party always comes from the campaign).
+// Mirrors the grouping in bpSaveEncounterCore: identical fighters group
+// by count, and condition state is part of the grouping key.
+function bpCampaignEntriesFromCombatants(list, partyIds) {
+    const groups = [];
+    (list || []).forEach(function(c) {
+        if(c.side === 'hero' && c.vaultId && partyIds.indexOf(c.vaultId) !== -1) return;
+        const condSig = (c.conditions && c.conditions.length)
+            ? '|cond:' + c.conditions.slice().sort().join(',') + ':' + JSON.stringify(c.conditionAmounts || {})
+            : '';
+        const key = (c.vaultId ? 'v|' + c.vaultId : 'n|' + c.baseName + '|' + c.rank + '|' + (c.resilience || 0)) + condSig;
+        let g = null;
+        for(let i = 0; i < groups.length; i++) if(groups[i].key === key && groups[i].side === c.side) { g = groups[i]; break; }
+        if(!g) {
+            g = { key: key, qty: 0, side: c.side };
+            if(c.vaultId) { g.kind = 'vault'; g.vaultId = c.vaultId; }
+            else { g.kind = 'narrator'; g.name = c.baseName; g.rank = c.rank; g.res = c.resilience || 0; g.vig = c.vigilance || 0; g.notes = c.notes || ''; }
+            if(c.conditions && c.conditions.length) { g.conds = c.conditions.slice(); g.condAmt = Object.assign({}, c.conditionAmounts || {}); }
+            groups.push(g);
+        }
+        g.qty++;
+    });
+    return groups.map(function(g) {
+        const e = { kind: g.kind, qty: g.qty, side: g.side };
+        if(g.kind === 'vault') e.vaultId = g.vaultId;
+        else { e.name = g.name; e.rank = g.rank; e.res = g.res; e.vig = g.vig; e.notes = g.notes; }
+        if(g.conds && g.conds.length) { e.conds = g.conds; if(g.condAmt && Object.keys(g.condAmt).length) e.condAmt = g.condAmt; }
+        return e;
+    });
+}
+// Copies the tracked party combatants' live state back into the
+// campaign. markDone also completes the encounter and lands the Fight
+// screen back on the campaign panel.
+function bpCampaignWriteBack(markDone) {
+    const ctx = window._bpCampaignCtx;
+    if(!ctx) return;
+    const camp = bpCampaignById(ctx.campaignId);
+    if(!camp) { window._bpCampaignCtx = null; return; }
+    Object.keys(ctx.uids || {}).forEach(function(vaultId) {
+        const c = combatants.find(function(x){ return x.uid === ctx.uids[vaultId]; });
+        const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
+        if(!c || !p) return;
+        const st = bpCampaignCaptureState(c);
+        p.hp = st.hp; p.fp = st.fp; p.karma = st.karma; p.conds = st.conds; p.condAmt = st.condAmt;
+        p.name = c.baseName;
+    });
+    let encName = '';
+    if(markDone) {
+        const enc = camp.encounters.find(function(e){ return e.id === ctx.encounterId; });
+        if(enc) { enc.done = true; encName = enc.name; }
+    }
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    if(markDone) {
+        window._bpCampaignCtx = null;
+        window._bpOpenCampaignId = camp.id;
+        if(typeof showNotice === 'function') showNotice('Campaign "' + camp.name + '" updated — party state saved' + (encName ? ', "' + encName + '" marked done' : '') + '.');
+    }
+}
+function bpCampaignRunEncounter(campId, encId) {
+    const camp = bpCampaignById(campId);
+    if(!camp) return;
+    const enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if(!enc) return;
+    if(!camp.party.length) { if(typeof showNotice === 'function') showNotice('Add heroes to the party first (✎ Edit party).'); return; }
+    const doLaunch = function() {
+        const partyEntries = camp.party.map(function(p) {
+            const st = bpCampaignPartyState(camp, p);
+            const e = { kind: 'vault', vaultId: p.vaultId, qty: 1, side: 'hero' };
+            if(st) {
+                if(st.conds.length) { e.conds = st.conds.slice(); if(Object.keys(st.condAmt).length) e.condAmt = Object.assign({}, st.condAmt); }
+                e.state = { hp: st.hp, fp: st.fp, karma: st.karma };
+            }
+            return e;
+        });
+        bpStageEncounter({ name: enc.name, saveKind: 'prepared', entries: partyEntries.concat(enc.entries || []) }, -1);
+        const uids = {};
+        combatants.forEach(function(c) {
+            if(c.side === 'hero' && c.vaultId && !uids[c.vaultId] && camp.party.some(function(p){ return p.vaultId === c.vaultId; })) uids[c.vaultId] = c.uid;
+        });
+        window._bpCampaignCtx = { campaignId: camp.id, encounterId: enc.id, uids: uids };
+        bpSetFightPhase('combat');
+    };
+    if(typeof bpStatefulFight === 'function' && bpStatefulFight()) {
+        showConfirm('A fight is already staged or underway. Launching this encounter will replace it. Continue?', doLaunch, null, 'Replace current fight?', '⚔');
+    } else doLaunch();
+}
+function bpCampaignCreate() {
+    const nameEl = document.getElementById('campNameInput');
+    const name = (nameEl && nameEl.value.trim()) || 'New Campaign';
+    const camp = { id: 'c' + Date.now().toString(36), name: name, createdAt: Date.now(), updatedAt: Date.now(), party: [], encounters: [] };
+    const list = bpGetCampaigns();
+    list.push(camp);
+    bpSaveCampaigns(list);
+    window._bpOpenCampaignId = camp.id;
+    window._bpRest = { hours: 2, mode: 'easy' };
+    bpRenderFightEntry();
+}
+function bpCampaignDelete(id) {
+    bpSaveCampaigns(bpGetCampaigns().filter(function(c){ return c.id !== id; }));
+    if(window._bpOpenCampaignId === id) window._bpOpenCampaignId = null;
+    bpRenderFightEntry();
+}
+function bpCampaignOpen(id) {
+    window._bpOpenCampaignId = id;
+    window._bpRest = { hours: 2, mode: 'easy' };
+    bpRenderFightEntry();
+}
+function bpCampaignClose() { window._bpOpenCampaignId = null; bpRenderFightEntry(); }
+function bpCampaignEditParty(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    let heroes = [];
+    try { heroes = getVault().filter(function(h){ return h && h.vaultId; }); } catch(e) {}
+    if(!heroes.length) { if(typeof showNotice === 'function') showNotice('No heroes in the Vault yet.'); return; }
+    const rows = heroes.map(function(h) {
+        const info = bpCampaignHeroInfo(h.vaultId);
+        const checked = camp.party.some(function(p){ return p.vaultId === h.vaultId; });
+        return '<label style="display:flex;gap:8px;align-items:center;padding:6px 8px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;cursor:pointer;">'
+            + '<input type="checkbox" class="bpCampPartyPick" value="' + _bpEsc(h.vaultId) + '"' + (checked ? ' checked' : '') + '>'
+            + '<span style="flex:1;font-size:0.85em;">' + _bpEsc(info ? info.name : (h.heroName || 'Hero')) + ' <span style="color:#888;">· Rank ' + (info ? info.rank : '?') + '</span></span></label>';
+    }).join('');
+    _showPickerModal('🦸 Party — ' + _bpEsc(camp.name),
+        '<div style="font-size:0.82em;color:#999;">Checked heroes form the party, and anyone already in the party keeps their carried-over state. Unchecked heroes leave the party and their saved state is discarded.</div>'
+        + '<div style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;">' + rows + '</div>'
+        + '<button onclick="bpCampaignEditPartySave(\'' + id + '\')" style="padding:11px;font-size:0.9em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">✓ Save party</button>');
+}
+function bpCampaignEditPartySave(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const picks = Array.prototype.map.call(document.querySelectorAll('.bpCampPartyPick:checked'), function(el){ return el.value; });
+    camp.party = picks.map(function(vaultId) {
+        const existing = camp.party.find(function(p){ return p.vaultId === vaultId; });
+        if(existing) return existing;
+        const info = bpCampaignHeroInfo(vaultId);
+        return { vaultId: vaultId, name: info ? info.name : 'Hero', hp: null, fp: null, karma: 0, conds: [], condAmt: {} };
+    });
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    _closePickerModal();
+    bpRenderFightEntry();
+}
+function bpCampaignAdjust(id, vaultId, field, delta) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
+    if(!p) return;
+    const st = bpCampaignPartyState(camp, p);
+    if(!st) return;
+    if(field === 'hp') p.hp = Math.max(0, Math.min(st.info.maxHp, st.hp + delta));
+    else if(field === 'fp') p.fp = Math.max(0, Math.min(st.info.maxFp, st.fp + delta));
+    else if(field === 'karma') p.karma = Math.max(0, st.karma + delta);
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignFullHeal(id, vaultId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
+    if(!p) return;
+    p.hp = null; p.fp = null;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignRemoveCondition(id, vaultId, idx) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
+    if(!p || !Array.isArray(p.conds)) return;
+    const removed = p.conds.splice(idx, 1)[0];
+    if(removed && p.condAmt) delete p.condAmt[removed];
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignRestAdj(delta) {
+    const r = window._bpRest || { hours: 2, mode: 'easy' };
+    r.hours = Math.max(1, Math.min(24, (r.hours || 2) + delta));
+    window._bpRest = r;
+    bpRenderFightEntry();
+}
+function bpCampaignRestMode(mode) {
+    const r = window._bpRest || { hours: 2, mode: 'easy' };
+    r.mode = mode;
+    window._bpRest = r;
+    bpRenderFightEntry();
+}
+function bpCampaignRestApply(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const r = window._bpRest || { hours: 2, mode: 'easy' };
+    const lines = [];
+    camp.party.forEach(function(p) {
+        const st = bpCampaignPartyState(camp, p);
+        if(!st) return;
+        const out = bpCampaignRestCalc(st, st.info, r.hours, r.mode);
+        p.hp = out.hp; p.fp = out.fp; p.karma = out.karma;
+        lines.push(st.info.name + ': Health ' + st.hp + ' → ' + out.hp + ', Focus ' + st.fp + ' → ' + out.fp + (out.karmaFaded ? ', earned Karma faded' : ''));
+    });
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+    if(typeof showNotice === 'function') showNotice('The party ' + (r.mode === 'sleep' ? 'sleeps' : 'takes it easy') + ' for ' + r.hours + 'h. ' + lines.join(' · '));
+}
+function bpCampaignAddSetup(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const partyIds = camp.party.map(function(p){ return p.vaultId; });
+    const entries = bpCampaignEntriesFromCombatants(combatants, partyIds);
+    if(!entries.length) {
+        if(typeof showNotice === 'function') showNotice('Nothing to capture — stage the enemies in Fight setup first. Party heroes join automatically at launch.');
+        return;
+    }
+    window._bpCampPendingEntries = entries;
+    _showPickerModal('＋ Add encounter — ' + _bpEsc(camp.name),
+        '<div style="font-size:0.85em;color:#bbb;">Capture the staged non-party fighters as a new encounter:</div>'
+        + '<div style="font-size:0.82em;color:#999;">' + _bpEsc(bpEncSummary({ entries: entries })) + '</div>'
+        + '<input id="bpCampEncName" type="text" placeholder="Encounter name…" style="padding:8px 10px;font-size:0.85em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
+        + '<button onclick="bpCampaignAddSetupConfirm(\'' + id + '\')" style="padding:11px;font-size:0.9em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">＋ Add encounter</button>');
+}
+function bpCampaignAddSetupConfirm(id) {
+    const camp = bpCampaignById(id);
+    if(!camp || !window._bpCampPendingEntries) return;
+    const nameEl = document.getElementById('bpCampEncName');
+    const name = (nameEl && nameEl.value.trim()) || ('Encounter ' + (camp.encounters.length + 1));
+    camp.encounters.push({ id: 'e' + Date.now().toString(36), name: name, done: false, entries: window._bpCampPendingEntries });
+    window._bpCampPendingEntries = null;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    _closePickerModal();
+    bpRenderFightEntry();
+}
+function bpCampaignImport(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const list = bpGetEncounters();
+    if(!list.length) { if(typeof showNotice === 'function') showNotice('No saved battles to import.'); return; }
+    const rows = list.map(function(enc, i) {
+        return '<button onclick="bpCampaignImportPick(\'' + id + '\',' + i + ')" style="text-align:left;padding:9px 10px;font-size:0.85em;background:#161616;border:1px solid #2c2c2c;border-radius:5px;color:#ddd;cursor:pointer;">'
+            + _bpEsc(enc.name || 'Untitled') + ' <span style="color:#888;">(' + _bpEsc(bpEncSummary(enc)) + ')</span></button>';
+    }).join('');
+    _showPickerModal('📥 Import a saved battle — ' + _bpEsc(camp.name),
+        '<div style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;">' + rows + '</div>'
+        + '<div style="font-size:0.78em;color:#888;">Party heroes in the saved battle are skipped — the campaign party joins at launch. Enemies always start fresh.</div>');
+}
+function bpCampaignImportPick(id, i) {
+    const camp = bpCampaignById(id);
+    const enc = bpGetEncounters()[i];
+    if(!camp || !enc) return;
+    const partyIds = camp.party.map(function(p){ return p.vaultId; });
+    const entries = (enc.entries || [])
+        .filter(function(e){ return !(e.kind === 'vault' && partyIds.indexOf(e.vaultId) !== -1); })
+        .map(function(e){ const c = Object.assign({}, e); delete c.state; return c; });
+    if(!entries.length) { if(typeof showNotice === 'function') showNotice('That battle is only party heroes — nothing to import.'); _closePickerModal(); return; }
+    camp.encounters.push({ id: 'e' + Date.now().toString(36), name: enc.name || 'Encounter', done: false, entries: entries });
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    _closePickerModal();
+    bpRenderFightEntry();
+}
+function bpCampaignEncToggle(id, encId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if(!enc) return;
+    enc.done = !enc.done;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignEncDelete(id, encId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    camp.encounters = camp.encounters.filter(function(e){ return e.id !== encId; });
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignEncMove(id, encId, dir) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const i = camp.encounters.findIndex(function(e){ return e.id === encId; });
+    const j = i + dir;
+    if(i < 0 || j < 0 || j >= camp.encounters.length) return;
+    const t = camp.encounters[i];
+    camp.encounters[i] = camp.encounters[j];
+    camp.encounters[j] = t;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignsHtml() {
+    const list = bpGetCampaigns();
+    const openId = window._bpOpenCampaignId;
+    const open = openId ? list.find(function(c){ return c.id === openId; }) : null;
+    if(open) return bpCampaignPanelHtml(open);
+    const btn = 'width:auto;padding:6px 12px;font-size:0.8em;border-radius:5px;cursor:pointer;';
+    let h = '<div style="background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:14px;margin-top:14px;">'
+        + '<div style="font-size:1.05em;font-weight:bold;letter-spacing:1px;margin-bottom:4px;">📚 Campaigns</div>'
+        + '<div style="font-size:0.8em;color:#888;margin-bottom:12px;">A party whose Health, Focus, Karma and conditions carry from fight to fight, plus a queue of encounters ready to run.</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">'
+        + '<input id="campNameInput" type="text" placeholder="Campaign name…" style="flex:1;min-width:140px;padding:6px 10px;font-size:0.8em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
+        + '<button onclick="bpCampaignCreate()" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">＋ New campaign</button>'
+        + '</div>';
+    if(!list.length) {
+        h += '<div style="font-size:0.8em;color:#666;font-style:italic;">No campaigns yet.</div>';
+    } else {
+        h += list.map(function(c) {
+            const done = (c.encounters || []).filter(function(e){ return e.done; }).length;
+            return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
+                + '<span style="flex:1;font-size:0.82em;"><strong>' + _bpEsc(c.name || 'Untitled') + '</strong> <span style="color:#666;">(' + (c.party || []).length + ' hero' + ((c.party || []).length === 1 ? '' : 'es') + ' · ' + done + '/' + (c.encounters || []).length + ' encounters done)</span></span>'
+                + '<button onclick="bpCampaignOpen(\'' + c.id + '\')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#0a3a5a;border:1px solid #1a6a9a;border-radius:4px;color:#aad4ff;cursor:pointer;">Open</button>'
+                + '<button onclick="bpCampaignDelete(\'' + c.id + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
+                + '</div>';
+        }).join('');
+    }
+    return h + '</div>';
+}
+function bpCampaignPanelHtml(camp) {
+    const btn = 'width:auto;padding:5px 10px;font-size:0.78em;border-radius:5px;cursor:pointer;';
+    const step = 'width:27px;height:27px;font-size:0.85em;background:#222;border:1px solid #555;border-radius:5px;color:#eee;cursor:pointer;padding:0;';
+    const cid = camp.id;
+    let h = '<div style="background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:14px;margin-top:14px;">'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'
+        + '<span style="flex:1;font-size:1.05em;font-weight:bold;letter-spacing:1px;min-width:140px;">📚 ' + _bpEsc(camp.name || 'Campaign') + '</span>'
+        + '<button onclick="bpCampaignClose()" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">← All campaigns</button>'
+        + '<button onclick="bpCampaignEditParty(\'' + cid + '\')" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">✎ Edit party</button>'
+        + '<button onclick="bpCampaignDelete(\'' + cid + '\')" style="' + btn + 'background:#3a0a0a;border:1px solid #6a1a1a;color:#ff9999;">🗑 Delete</button>'
+        + '</div>';
+    // -- Party state --
+    h += '<div style="font-size:0.78em;color:#888;text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px;">🦸 Party — carries between fights</div>';
+    if(!camp.party.length) {
+        h += '<div style="font-size:0.82em;color:#666;font-style:italic;">No heroes yet. Tap ✎ Edit party to choose who is in this campaign.</div>';
+    }
+    camp.party.forEach(function(p) {
+        const st = bpCampaignPartyState(camp, p);
+        if(!st) {
+            h += '<div style="padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;font-size:0.82em;color:#999;">⚠ ' + _bpEsc(p.name || 'A hero') + ' is no longer in the Vault — remove them with ✎ Edit party.</div>';
+            return;
+        }
+        const info = st.info;
+        const hpPct = Math.max(0, Math.round((st.hp / info.maxHp) * 100));
+        const fpPct = Math.max(0, Math.round((st.fp / info.maxFp) * 100));
+        const hpColor = hpPct > 50 ? '#44ff88' : hpPct > 25 ? '#ffcc00' : '#ff4444';
+        const adj = function(field, d, label) { return '<button onclick="bpCampaignAdjust(\'' + cid + '\',\'' + p.vaultId + '\',\'' + field + '\',' + d + ')" style="' + step + '" title="' + label + '">' + label + '</button>'; };
+        h += '<div style="padding:9px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
+            + '<div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;"><span style="flex:1;font-size:0.88em;font-weight:bold;min-width:120px;">' + _bpEsc(info.name) + ' <span style="color:#888;font-weight:normal;">· Rank ' + info.rank + '</span>' + (info.hasHF ? ' <span style="color:#7be495;" title="Healing Factor — Health returns to full when the party rests">💚 Healing Factor</span>' : '') + '</span>'
+            + '<span style="font-size:0.8em;color:#cc9;">✦ Karma ' + st.karma + '</span>'
+            + '<button onclick="bpCampaignAdjust(\'' + cid + '\',\'' + p.vaultId + '\',\'karma\',-1)" style="' + step + '">−</button>'
+            + '<button onclick="bpCampaignAdjust(\'' + cid + '\',\'' + p.vaultId + '\',\'karma\',1)" style="' + step + '">+</button>'
+            + '<button onclick="bpCampaignFullHeal(\'' + cid + '\',\'' + p.vaultId + '\')" style="' + btn + 'background:#222;border:1px solid #555;color:#ddd;" title="Reset this hero to full Health and Focus">↺ Full</button></div>'
+            + '<div style="display:flex;gap:5px;align-items:center;margin-top:7px;"><span style="width:52px;font-size:0.75em;color:#999;">Health</span>'
+            + '<div style="flex:1;height:9px;background:#222;border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + hpPct + '%;background:' + hpColor + ';"></div></div>'
+            + '<span style="font-size:0.8em;min-width:64px;text-align:right;">' + st.hp + ' / ' + info.maxHp + '</span>'
+            + adj('hp', -10, '−10') + adj('hp', -1, '−1') + adj('hp', 1, '+1') + adj('hp', 10, '+10') + '</div>'
+            + '<div style="display:flex;gap:5px;align-items:center;margin-top:5px;"><span style="width:52px;font-size:0.75em;color:#999;">Focus</span>'
+            + '<div style="flex:1;height:9px;background:#222;border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + fpPct + '%;background:#44ccff;"></div></div>'
+            + '<span style="font-size:0.8em;min-width:64px;text-align:right;">' + st.fp + ' / ' + info.maxFp + '</span>'
+            + adj('fp', -10, '−10') + adj('fp', -1, '−1') + adj('fp', 1, '+1') + adj('fp', 10, '+10') + '</div>';
+        if(st.conds.length) {
+            h += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;">' + st.conds.map(function(cond, ci) {
+                const amt = st.condAmt && st.condAmt[cond] ? ' · ' + st.condAmt[cond] + ' HP/turn' : '';
+                return '<span style="font-size:0.75em;background:#33240a;border:1px solid #7a5a22;color:#ffcc66;border-radius:10px;padding:2px 8px;">' + _bpEsc(cond) + amt + ' <a href="javascript:void(0)" onclick="bpCampaignRemoveCondition(\'' + cid + '\',\'' + p.vaultId + '\',' + ci + ')" style="color:#ff9999;text-decoration:none;">✕</a></span>';
+            }).join('') + '</div>';
+        }
+        h += '</div>';
+    });
+    // -- Rest step --
+    const r = window._bpRest || { hours: 2, mode: 'easy' };
+    const modeBtn = function(m, label) {
+        const on = r.mode === m;
+        return '<button onclick="bpCampaignRestMode(\'' + m + '\')" style="' + btn + (on ? 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;font-weight:bold;' : 'background:#222;border:1px solid #444;color:#ccc;') + '">' + label + '</button>';
+    };
+    h += '<div style="font-size:0.78em;color:#888;text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;">🌙 Between encounters — rest</div>'
+        + '<div style="padding:9px 10px;background:#131a14;border:1px solid #2c3a2c;border-radius:5px;">'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'
+        + modeBtn('easy', 'Take it easy') + modeBtn('sleep', 'Sleep')
+        + '<span style="font-size:0.82em;color:#999;margin-left:4px;">for</span>'
+        + '<button onclick="bpCampaignRestAdj(-1)" style="' + step + '">−</button>'
+        + '<span style="font-size:0.9em;font-weight:bold;min-width:52px;text-align:center;">' + r.hours + ' hour' + (r.hours === 1 ? '' : 's') + '</span>'
+        + '<button onclick="bpCampaignRestAdj(1)" style="' + step + '">+</button>'
+        + '<button onclick="bpCampaignRestApply(\'' + cid + '\')" style="' + btn + 'background:#1a4a00;border:1px solid #44aa22;color:#aaffaa;font-weight:bold;">✓ Apply rest</button>'
+        + '</div>'
+        + '<div style="font-size:0.78em;color:#888;margin-top:7px;">Book rates: regain lost Health and Focus equal to rank per hour of taking it easy, double that asleep. Healing Factor heroes regain all their Health. '
+        + ((r.mode === 'sleep' && r.hours >= 8) ? '<span style="color:#ffcc66;">A full night\'s sleep: earned Karma fades for heroes without the Heroic tag.</span>' : '')
+        + '</div>';
+    const previews = [];
+    camp.party.forEach(function(p) {
+        const st = bpCampaignPartyState(camp, p);
+        if(!st) return;
+        const out = bpCampaignRestCalc(st, st.info, r.hours, r.mode);
+        const parts = [];
+        if(st.info.hasHF && st.hp < st.info.maxHp) parts.push('Health → full 💚');
+        else if(out.hpGain > 0) parts.push('Health +' + out.hpGain);
+        if(out.fpGain > 0) parts.push('Focus +' + out.fpGain);
+        if(out.karmaFaded) parts.push('earned Karma fades');
+        if(parts.length) previews.push(_bpEsc(st.info.name) + ': ' + parts.join(' · '));
+    });
+    if(previews.length) h += '<div style="font-size:0.8em;color:#aaccaa;margin-top:6px;">' + previews.join('<br>') + '</div>';
+    h += '</div>';
+    // -- Encounter queue --
+    h += '<div style="font-size:0.78em;color:#888;text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;">⚔ Encounters</div>';
+    if(!camp.encounters.length) {
+        h += '<div style="font-size:0.82em;color:#666;font-style:italic;">No encounters queued. Stage enemies in Fight setup and capture them here, or import a saved battle.</div>';
+    }
+    camp.encounters.forEach(function(enc, ei) {
+        const n = (enc.entries || []).reduce(function(a, e){ return a + (Math.max(1, parseInt(e.qty, 10) || 1)); }, 0);
+        const sum = bpEncSummary(enc);
+        h += '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
+            + '<span style="flex:1;font-size:0.82em;' + (enc.done ? 'opacity:0.55;' : '') + '"><strong>' + (enc.done ? '✓ ' : '') + _bpEsc(enc.name || 'Encounter') + '</strong> <span style="color:#666;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span>'
+            + (sum ? '<br><span style="font-size:0.85em;color:#777;">' + _bpEsc(sum) + '</span>' : '') + '</span>'
+            + '<button onclick="bpCampaignEncMove(\'' + cid + '\',\'' + enc.id + '\',-1)" style="' + step + '" title="Move up">↑</button>'
+            + '<button onclick="bpCampaignEncMove(\'' + cid + '\',\'' + enc.id + '\',1)" style="' + step + '" title="Move down">↓</button>'
+            + '<button onclick="bpCampaignRunEncounter(\'' + cid + '\',\'' + enc.id + '\')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#1a6600;border:1px solid #44aa44;border-radius:4px;color:#fff;cursor:pointer;">▶ Run</button>'
+            + '<button onclick="bpCampaignEncToggle(\'' + cid + '\',\'' + enc.id + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#222;border:1px solid #555;border-radius:4px;color:#ddd;cursor:pointer;">' + (enc.done ? '↺ Reopen' : '✓ Done') + '</button>'
+            + '<button onclick="bpCampaignEncDelete(\'' + cid + '\',\'' + enc.id + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
+            + '</div>';
+    });
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">'
+        + '<button onclick="bpCampaignAddSetup(\'' + cid + '\')" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">＋ Add current Fight setup</button>'
+        + '<button onclick="bpCampaignImport(\'' + cid + '\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">📥 Import saved battle</button>'
+        + '</div>'
+        + '</div>';
+    return h;
+}
 
 // ---- Saved encounters ----
 var BP_ENC_KEY = 'bullpen_encounters_v1';
@@ -19595,6 +20102,7 @@ function bpSaveEncounterCore(name, kind) {
     if(actualKind === 'in-progress') window._bpResumedEncounter = { index: savedIdx, name: name };
     if(typeof showNotice === 'function') showNotice('Saved "' + name + '" (' + combatants.length + ' combatants' + (oi >= 0 ? ', updated in place' : '') + (actualKind === 'in-progress' ? ' — mid-fight state saved' : '') + ').');
     bpRenderEncounterList();
+    if(window._bpCampaignCtx) bpCampaignWriteBack(false);
     if(typeof bpRenderFightEntry === 'function') bpRenderFightEntry();
     return true;
 }
@@ -19631,6 +20139,14 @@ function bpDeleteEncounter(i) {
 }
 function bpLoadEncounter(i) {
     const enc = bpGetEncounters()[i];
+    if(!enc) return;
+    window._bpCampaignCtx = null; // a standalone battle ends campaign-fight tracking
+    bpStageEncounter(enc, i);
+}
+// Stages any encounter-shaped object ({name, saveKind, entries, fight?})
+// into the combat tracker. resumeIndex is the saved-battle slot used for
+// mid-fight overwrite tracking; campaign launches pass -1 (not a save).
+function bpStageEncounter(enc, resumeIndex) {
     if(!enc) return;
     window._bpEditingEncounter = null;
     const entryFirstIdx = [];
@@ -19702,7 +20218,7 @@ function bpLoadEncounter(i) {
             Object.keys(f.rolls || {}).forEach(function(ei) { const u = uidOf(parseInt(ei, 10)); if(u) initiativeRolls[u] = f.rolls[ei]; });
             combatPhase = f.phase;
         }
-        window._bpResumedEncounter = { index: i, name: enc.name || '' };
+        window._bpResumedEncounter = { index: resumeIndex, name: enc.name || '' };
     } else {
         window._bpResumedEncounter = null;
     }
