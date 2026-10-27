@@ -18346,6 +18346,7 @@ function bpApplyRiders(t, fx, outcome, connected) {
 }
 const BP_DMG_BOOSTERS = { melee: ['Mighty', 'Grow'], agility: ['Accuracy'], ego: ['Discipline'], logic: ['Brilliance'] };
 const BP_ABILITIES = ['melee', 'agility', 'ego', 'logic'];
+const BP_ALL_ABILITIES = ['melee', 'agility', 'resilience', 'vigilance', 'ego', 'logic'];
 window._bpTurnSel = null;
 
 function bpCombatPowerBonus(powers, prefixes) {
@@ -18492,7 +18493,8 @@ function bpTurnPeek(safeUid) {
         + 'Health <strong>' + c.currentHp + '/' + c.maxHp + '</strong> &middot; Focus <strong>' + c.currentFp + '/' + c.maxFp + '</strong>'
         + (c.karma ? ' &middot; Karma ' + c.karma : '')
         + (dr ? '<br>Damage Reduction ' + dr : '')
-        + '<br>' + ab + '</div>',
+        + '<br>' + ab
+        + '<br><span style="color:#9fc3ff;">Defenses:</span> ' + BP_ALL_ABILITIES.map(function(a){ return a.charAt(0).toUpperCase() + a.slice(1) + ' ' + bpDefense(c, a); }).join(' &middot; ') + '</div>',
         (c.conditions && c.conditions.length)
             ? '<div style="font-size:0.8em; color:#ffaa55;">Conditions: ' + c.conditions.map(function(x){ return _bpEsc(x); }).join(', ') + '</div>' : '',
         (c.powers && c.powers.length)
@@ -18571,6 +18573,7 @@ function bpTurnStart(safeUid, kind, name, ability) {
     const sel = { actorUid: actor.uid, kind: kind, name: name || '', ability: ability || 'melee',
         targets: [], d1: 3, d2: 3, marvelDie: 3, tn: {}, rollMode: 'manual', rolled: false,
         focusSpent: 0, resource: 'hp', damageMode: kind === 'attack',
+        total: 9, fantastic: false,
         edgeNet: 0, edgeTouched: false, edgeNotes: [], rerolls: [] };
     if(kind === 'power') {
         const pd = (typeof powersData !== 'undefined' && powersData[name]) || null;
@@ -18587,12 +18590,53 @@ function bpTurnStart(safeUid, kind, name, ability) {
     window._bpTurnSel = sel;
     bpTurnRenderResolve();
 }
-function bpDefaultTN(target, ability) { return 10 + bpAbilityScore(target, ability); }
+// Which of the target's defenses a roll is made against: the defense the
+// power names in its own text when it names one (the same parse the
+// app's power cards display, e.g. Mists of Morpheus is an Ego check
+// against the target's Vigilance defense), otherwise the defense of the
+// ability being rolled (Core: close attacks vs Melee defense, ranged
+// attacks vs Agility defense).
+function bpDefenseAbility(sel) {
+    if(!sel || sel.kind !== 'power') return sel ? sel.ability : 'melee';
+    const fx = bpPowerFx(sel.name);
+    if(fx && fx.d) return fx.d;
+    const pd = (typeof powersData !== 'undefined' && powersData[sel.name]) || null;
+    const eff = (pd && pd.effect) || '';
+    const m = eff.match(/target'?s\s+(Melee|Agility|Resilience|Vigilance|Ego|Logic)\s+defense/i)
+        || eff.match(/vs\.?\s+(?:the\s+)?(?:target'?s?\s+)?(Melee|Agility|Resilience|Vigilance|Ego|Logic)\s+defense/i)
+        || eff.match(/(Melee|Agility|Resilience|Vigilance|Ego|Logic)\s+defense/i);
+    return m ? m[1].toLowerCase() : sel.ability;
+}
+// Flat defense bonuses from powers/traits — the same tables the
+// character sheet applies (Spider-Sense +2 Agility defense; the Big and
+// Small traits adjust Melee/Agility defenses), so combat TNs match the
+// sheet exactly.
+function bpDefenseBonus(c, stat) {
+    let b = 0;
+    if(typeof defFlatBonuses !== 'undefined' && Array.isArray(defFlatBonuses))
+        defFlatBonuses.forEach(function(x){ if(x.stat === stat && (c.powers || []).indexOf(x.power) !== -1) b += x.bonus; });
+    if(typeof traitDefFlatBonuses !== 'undefined' && Array.isArray(traitDefFlatBonuses))
+        traitDefFlatBonuses.forEach(function(x){ if(x.stat === stat && (c.traits || []).indexOf(x.trait) !== -1) b += x.bonus; });
+    return b;
+}
+// A character's defense for a stat: 10 + ability score + flat bonuses
+// (Core, Ability Defense). Condition override from the app's own
+// condition text: an Asleep character's defenses are all 10.
+function bpDefense(c, stat) {
+    const conds = ((c && c.conditions) || []).map(function(x){ return String(x).toLowerCase(); });
+    if(conds.indexOf('asleep') !== -1) return 10;
+    return 10 + bpAbilityScore(c, stat) + bpDefenseBonus(c, stat);
+}
+function bpDefaultTN(target, ability) { return bpDefense(target, ability); }
 function bpTargetTN(sel, target) {
     const v = sel.tn ? sel.tn[target.uid] : undefined;
     if(v !== undefined && v !== null) return v;
     if(sel.tnDefault) return sel.tnDefault;
-    return bpDefaultTN(target, sel.ability);
+    const stat = bpDefenseAbility(sel);
+    const conds = ((target && target.conditions) || []).map(function(x){ return String(x).toLowerCase(); });
+    // Paralyzed: Agility defense drops to 10 against ranged attacks.
+    if(stat === 'agility' && conds.indexOf('paralyzed') !== -1 && sel.ability !== 'melee') return 10;
+    return bpDefense(target, stat);
 }
 function bpSyncRerolls(sel) {
     if(!Array.isArray(sel.rerolls)) sel.rerolls = [];
@@ -18625,6 +18669,17 @@ function bpDiceState(sel, upto) {
     return out;
 }
 function bpEffDice(sel) {
+    if(sel.rollMode === 'manual') {
+        // Ben's simplified entry (2026-10-27): the player enters the dice
+        // total and whether the Marvel die came up M. 18 + M is an
+        // ultimate Fantastic. The Marvel die counts as 6 for damage on a
+        // Fantastic; otherwise its face value is entered separately.
+        const f = !!sel.fantastic;
+        const notes = [];
+        if(sel.edgeNet > 0) notes.push('Edge &times;' + sel.edgeNet + ' — rerolled at the table; the final total was entered.');
+        if(sel.edgeNet < 0) notes.push('Trouble &times;' + (-sel.edgeNet) + ' — rerolled at the table; the final total was entered.');
+        return { d1: 0, d2: 0, m: f ? 6 : (sel.marvelDie || 0), notes: notes, ultimate: (sel.total || 0) === 18 && f };
+    }
     const st = bpDiceState(sel, null);
     const out = { d1: st.d1, d2: st.d2, m: st.m, notes: [],
         ultimate: (sel.d1 || 0) === 6 && (sel.d2 || 0) === 6 && (sel.marvelDie || 0) === 6 };
@@ -18683,6 +18738,7 @@ function bpEdgeSuggestion(actor, sel) {
     return { net: Math.max(-3, Math.min(3, edges - troubles)), notes: notes };
 }
 function bpRollTotal(actor, sel) {
+    if(sel.rollMode === 'manual') return (sel.total || 0) + bpAbilityScore(actor, sel.ability);
     const e = bpEffDice(sel);
     return e.d1 + e.d2 + e.m + bpAbilityScore(actor, sel.ability);
 }
@@ -18692,9 +18748,10 @@ function bpResolveOutcome(actor, target, sel) {
     const e = bpEffDice(sel);
     let success = total >= tn;
     if(e.ultimate) success = true;
-    const fantastic = success && e.m === 6;
+    const fDie = sel.rollMode === 'manual' ? !!sel.fantastic : e.m === 6;
+    const fantastic = success && fDie;
     return { total: total, tn: tn, success: success, fantastic: fantastic, ultimate: !!e.ultimate,
-        fantasticFail: !success && e.m === 6,
+        fantasticFail: !success && fDie,
         outcome: fantastic ? 'fantastic' : (success ? 'success' : 'miss') };
 }
 function bpProgramRoll() {
@@ -18749,6 +18806,7 @@ function bpTurnAdj(field, delta) {
         const cap = actor ? Math.max(0, actor.currentFp) : 99;
         sel.focusSpent = Math.min(cap, Math.max(0, (sel.focusSpent || 0) + delta));
     }
+    if(field === 'total') sel.total = Math.min(18, Math.max(3, (sel.total || 9) + delta));
     if(field === 'edgeNet') {
         sel.edgeTouched = true;
         sel.edgeNet = Math.min(3, Math.max(-3, (sel.edgeNet || 0) + delta));
@@ -18799,9 +18857,12 @@ function bpTurnRenderResolve() {
                 + '<div style="flex:1; font-size:1.1em; color:#eee;">&#127922; ' + (sel.d1 || '-') + ' + ' + (sel.d2 || '-') + ' + <strong style="color:#ffcc66;">' + (sel.marvelDie === 6 ? 'M' : (sel.marvelDie || '-')) + '</strong> <span style="font-size:0.7em; color:#888;">(last die is the Marvel die)</span></div>'
                 + '<button onclick="bpProgramRoll()" style="padding:9px 14px; font-weight:bold; background:#4a3800; border:1px solid #ffcc44; border-radius:6px; color:#ffcc66; cursor:pointer;">' + (sel.rolled ? 'Roll again' : '&#127922; Roll') + '</button></div>';
         } else {
-            html += bpTurnStepRow('First die', 'd1', sel.d1, '');
-            html += bpTurnStepRow('Second die', 'd2', sel.d2, '');
-            html += bpTurnStepRow('Marvel die', 'marvelDie', sel.marvelDie, 'A 6 is an M — Fantastic on a success');
+            html += bpTurnStepRow('Your roll — dice total', 'total', sel.total, 'All three dice added together, before your ability score');
+            const fOn = !!sel.fantastic;
+            const fBtn = function(val, lbl) { const on = fOn === !!val; return '<button onclick="bpTurnSet(\'fantastic\',' + (val ? 1 : 0) + ')" style="flex:1; padding:7px 2px; font-size:0.8em; font-weight:bold; background:' + (on ? '#4a3800' : '#1c1c1c') + '; border:1px solid ' + (on ? '#ffcc44' : '#444') + '; border-radius:6px; color:' + (on ? '#ffcc66' : '#aaa') + '; cursor:pointer;">' + lbl + '</button>'; };
+            html += '<div style="display:flex; align-items:center; gap:8px;"><span style="flex:1; font-size:0.82em; color:#bbb;">Fantastic?<br><span style="font-size:0.85em; color:#777;">The Marvel die came up M</span></span><div style="display:flex; gap:5px; flex:1;">' + fBtn(0, 'No') + fBtn(1, '&#9733; Yes — M') + '</div></div>';
+            if(sel.damageMode && !fOn) html += bpTurnStepRow('Marvel die (for damage)', 'marvelDie', sel.marvelDie, 'The number showing on the Marvel die itself');
+            if(sel.damageMode && fOn) html += '<div style="font-size:0.8em; color:#ffcc66;">The Marvel die counts as 6 (M) for damage.</div>';
         }
         if(!sel.edgeTouched) { const sg = bpEdgeSuggestion(actor, sel); sel.edgeNet = sg.net; sel.edgeNotes = sg.notes; bpSyncRerolls(sel); }
         const eNet = sel.edgeNet || 0;
@@ -18813,21 +18874,7 @@ function bpTurnRenderResolve() {
             + '<span style="min-width:76px; text-align:center; font-weight:bold; color:' + (eNet > 0 ? '#88dd88' : (eNet < 0 ? '#ff8888' : '#aaa')) + ';">' + eLbl + '</span>'
             + '<button onclick="bpTurnAdj(\'edgeNet\',1)" style="' + eBtn + '">+</button></div>';
         const effNow = bpEffDice(sel);
-        if(eNet !== 0 && sel.rollMode !== 'program') {
-            for(let ri = 0; ri < Math.abs(eNet); ri++) {
-                const rr = (sel.rerolls || [])[ri] || { die: 'd1', val: 1 };
-                let allowed = ['d1', 'd2', 'm'];
-                if(eNet < 0) { const st = bpDiceState(sel, ri); const mx = Math.max(st.d1, st.d2, st.m); allowed = allowed.filter(function(k){ return st[k] === mx; }); }
-                const curDie = allowed.indexOf(rr.die) !== -1 ? rr.die : allowed[0];
-                const dieBtns = allowed.map(function(k) {
-                    const on = curDie === k;
-                    const lbl = k === 'm' ? 'Marvel' : (k === 'd1' ? 'Die 1' : 'Die 2');
-                    return '<button onclick="bpTurnSet(\'rrDie' + ri + '\',\'' + k + '\')" style="padding:5px 8px; font-size:0.74em; font-weight:bold; background:' + (on ? '#4a3800' : '#1c1c1c') + '; border:1px solid ' + (on ? '#ffcc44' : '#444') + '; border-radius:5px; color:' + (on ? '#ffcc66' : '#aaa') + '; cursor:pointer;">' + lbl + '</button>';
-                }).join('');
-                html += '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span style="font-size:0.8em; color:#bbb;">Reroll ' + (ri + 1) + ' ' + (eNet < 0 ? '(trouble — best die, keep the worse)' : '(edge — keep the better)') + '</span>' + dieBtns + '</div>'
-                    + bpTurnStepRow('Rerolled value', 'rrVal' + ri, rr.val, '');
-            }
-        }
+        if(eNet !== 0 && sel.rollMode === 'manual') html += '<div style="font-size:0.8em; color:#999;">Have an edge or trouble? Reroll at the table, then enter the final total above.</div>';
         if(effNow.notes.length) html += '<div style="font-size:0.8em; color:#bbb;">' + effNow.notes.join('<br>') + '<br>Effective dice: ' + effNow.d1 + ' + ' + effNow.d2 + ' + ' + (effNow.m === 6 ? 'M' : effNow.m) + '</div>';
         if(effNow.ultimate) html += '<div style="font-size:0.85em; color:#ffcc44; font-weight:bold;">&#9733; Ultimate Fantastic (6 M 6) — automatic success, trouble ignored.</div>';
         html += '<div style="font-size:0.85em; color:#aee;">Check total: <strong>' + bpRollTotal(actor, sel) + '</strong> <span style="color:#777;">(dice + ' + _bpEsc(sel.ability) + ' score ' + bpAbilityScore(actor, sel.ability) + ')' + (sel.damageMode ? ' &middot; damage = Marvel die &times; multiplier + score' : '') + '</span></div>';
@@ -18844,6 +18891,8 @@ function bpTurnRenderResolve() {
     if(sel.kind === 'power' && !sel.damageMode) html += '<div style="font-size:0.82em; color:#bbb;">Marks the power used and records it. Pick target(s) if it applies to someone.</div>';
     // Targets
     const miniB = 'width:26px; height:26px; font-size:0.9em; background:#222; border:1px solid #555; border-radius:5px; color:#eee; cursor:pointer;';
+    const defAb = bpDefenseAbility(sel);
+    const defLbl = defAb.charAt(0).toUpperCase() + defAb.slice(1);
     const tBtns = combatants.filter(function(x){ return x.uid !== actor.uid; }).map(function(t) {
         const on = sel.targets.indexOf(t.uid) !== -1;
         const head = (on ? '&#9679; ' : '&#9675; ') + _bpEsc(t.label || t.baseName)
@@ -18864,7 +18913,7 @@ function bpTurnRenderResolve() {
         return '<div style="padding:8px 10px; background:#2a2410; border:1px solid #ffcc44; border-radius:6px;">'
             + '<div style="display:flex; align-items:center; gap:6px;">'
             + '<button onclick="bpTurnToggleTarget(\'' + t.uid + '\')" style="flex:1; text-align:left; background:none; border:none; color:#ddd; cursor:pointer; font-size:0.84em; padding:0;">' + head + '</button>'
-            + '<span style="font-size:0.74em; color:#999;">TN</span>'
+            + '<span style="font-size:0.74em; color:#999;">TN (' + defLbl + ' def)</span>'
             + '<button onclick="bpTurnTnAdj(\'' + t.uid + '\',-1)" style="' + miniB + '">&minus;</button>'
             + '<span style="min-width:24px; text-align:center; font-weight:bold; color:#ffcc66;">' + res.tn + '</span>'
             + '<button onclick="bpTurnTnAdj(\'' + t.uid + '\',1)" style="' + miniB + '">+</button>'
