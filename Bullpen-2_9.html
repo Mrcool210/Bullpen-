@@ -3493,6 +3493,14 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <button type="button" id="guidedModeCtaBtn" onclick="if(typeof _bpBeginGuidedHeroCreation==='function')_bpBeginGuidedHeroCreation();">
           <span class="cta-icon">🎓</span><span>Guided Mode<small>New player? Start here for a step-by-step walkthrough</small></span>
         </button>
+        <!-- Guided Tours hub: one tour per area of the app -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;">
+          <span style="width:100%;font-size:0.72em;font-weight:700;color:var(--text-sub);letter-spacing:1px;">🎓 GUIDED TOURS</span>
+          <button type="button" onclick="if(typeof _bpBeginGuidedHeroCreation==='function')_bpBeginGuidedHeroCreation();" style="flex:1;min-width:100px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">🦸 Build a Hero</button>
+          <button type="button" onclick="if(typeof _bpStartTour==='function')_bpStartTour('fight');" style="flex:1;min-width:100px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">⚔ Run a Fight</button>
+          <button type="button" onclick="if(typeof _bpStartTour==='function')_bpStartTour('campaign');" style="flex:1;min-width:100px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">📚 Run a Campaign</button>
+          <button type="button" onclick="if(typeof _bpStartTour==='function')_bpStartTour('vault');" style="flex:1;min-width:100px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">🗄 Tour the Vault</button>
+        </div>
         <!-- Grid of section shortcuts -->
         <div class="home-section-grid">
           <button class="home-section-card" onclick="appNavTo('bio')">
@@ -6564,12 +6572,18 @@ Characters shared by the Bullpen community. Browse them, view their sheets, add 
       <div class="screen-section">
         <div class="screen-section-title">Guided Tips</div>
         <div style="font-size:0.75em;color:var(--text-sub);margin-bottom:10px;line-height:1.5;">
-          Shows plain-English tips on Biography, Stats &amp; Powers for new players. Turn off any time.
+          Shows plain-English tips on every screen for new players. Turn off any time.
         </div>
         <label style="display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;">
           <input id="settingsGuidedModeToggle" type="checkbox" style="width:20px;height:20px;accent-color:var(--primary);" onchange="if(typeof bpSetGuidedMode==='function')bpSetGuidedMode(this.checked);">
-          <span style="font-size:0.8em;color:var(--text-sub);">Show guided tips while building</span>
+          <span style="font-size:0.8em;color:var(--text-sub);">Show guided tips on every screen</span>
         </label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+          <button type="button" onclick="if(typeof _bpBeginGuidedHeroCreation==='function')_bpBeginGuidedHeroCreation();" style="flex:1;min-width:110px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">🦸 Build a Hero</button>
+          <button type="button" onclick="if(typeof _bpStartTour==='function')_bpStartTour('fight');" style="flex:1;min-width:110px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">⚔ Run a Fight</button>
+          <button type="button" onclick="if(typeof _bpStartTour==='function')_bpStartTour('campaign');" style="flex:1;min-width:110px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">📚 Run a Campaign</button>
+          <button type="button" onclick="if(typeof _bpStartTour==='function')_bpStartTour('vault');" style="flex:1;min-width:110px;padding:9px 6px;font-size:0.8em;font-weight:bold;background:var(--bg-inset);border:1px solid var(--border);border-radius:8px;color:var(--text-main);cursor:pointer;">🗄 Tour the Vault</button>
+        </div>
       </div>
 
       <!-- Theme picker -->
@@ -19222,6 +19236,7 @@ function bpApplyFightPhase() {
     show('challengeHelperPanel', !inCombat);
     if(inEntry) bpRenderFightEntry();
     if(inSetup) bpRenderFightSetup();
+    if(typeof window._bpRenderGuidedPanel === 'function') { try { window._bpRenderGuidedPanel(); } catch(e) {} }
     if(inCombat) {
         bpRenderFightCombatBar();
         if(typeof renderActiveCombat === 'function') renderActiveCombat();
@@ -35322,6 +35337,101 @@ window.bpVaultPickChoose = function(heroIndex) {
                 'Traits are smaller narrative abilities and don\'t cost slots.',
                 'Ready? Tap <strong>✅ Complete Hero</strong> below to save your new character.'
             ]
+        },
+        home: {
+            step: 'Guided tips — Home',
+            title: 'Start here',
+            lines: [
+                'This is your home base: your current hero, shortcuts to every part of the sheet, and the big buttons that start things.',
+                '<strong>Create New Hero</strong> starts a fresh character, and <strong>🎓 Guided Mode</strong> walks you through it step by step. There are also guided tours for running a fight, running a campaign, and the Vault — find them right under the Guided Mode button.',
+                'Everything saves on this device automatically as you go.'
+            ]
+        },
+        vault: {
+            step: 'Guided tips — Vault',
+            title: 'All your saved characters',
+            lines: [
+                'Every hero you finish lands here. Tap a hero to open and edit them — rank-ups, new powers, photos, linked forms and sheet PDFs all start from their card.',
+                'The buttons up top open your <strong>Weapons Locker, Armory, Garage</strong> and <strong>Deeds</strong> — libraries of items, battle suits, vehicles and bases any hero can use.',
+                '<strong>👥 Build a Henchman</strong> makes a quick Rank 1–2 NPC in seconds — handy when tonight\'s fight needs one more goon.',
+                'Hero cards also carry share codes, for sending a hero to a friend, and submitting to the Community Vault.'
+            ]
+        },
+        equipment: {
+            step: 'Guided tips — Equipment',
+            title: 'Iconic items & battle suits',
+            lines: [
+                'Build the gear that defines a hero — a shield, a suit, a magic sword. Items can grant powers and damage bonuses while carried.',
+                '<strong>🎒 Owned Items</strong> is what the current hero has; <strong>⚒ Build / Edit</strong> makes new ones; the reference tab explains what item powers do.',
+                'An iconic weapon\'s damage bonus is worked into the hero\'s attacks automatically — including in the Fight tracker.'
+            ]
+        },
+        hq: {
+            step: 'Guided tips — Headquarters',
+            title: 'Bases & vehicles',
+            lines: [
+                'Give the team a home: a headquarters with its own traits and tags, plus the vehicles in its garage.',
+                'Build it once here (or from <strong>Deeds</strong> in the Vault) and link it to your heroes from their sheets.'
+            ]
+        },
+        play: {
+            step: 'Guided tips — Play Tools',
+            title: 'Tools for the table',
+            lines: [
+                '<strong>🎲 Dice</strong> rolls the d616 for any hero — pick a stat and it adds the right score.',
+                '<strong>🦸 Team</strong> covers advancement and the whole party at a glance; <strong>📚 Reference</strong> is the quick rules lookup; <strong>📓 Journal</strong> keeps your session notes, dated and stored on this device.'
+            ]
+        },
+        custom: {
+            step: 'Guided tips — Custom Builders',
+            title: 'Make your own content',
+            lines: [
+                'Build custom powers, traits, tags and items once, and they become available on every character — like your own house expansion.',
+                'Custom content stays yours: it never mixes into the official lists unless you use it.'
+            ]
+        },
+        settings: {
+            step: 'Guided tips — Settings',
+            title: 'Make the app yours',
+            lines: [
+                'Themes, guided tips and your data live here. Everything is stored on this device — heroes, saved battles and campaigns included.',
+                'Guided tips put a plain-English coach panel on every screen, and the 🎓 tours (Home screen, or right here in Settings) walk through the big features step by step.'
+            ]
+        },
+        combat: {
+            step: 'Guided tips — Fight',
+            title: 'Battles, start to finish',
+            lines: [
+                'Build a battle from saved fighters or from scratch, stage both sides, then run it turn by turn with the Active Turn screen.',
+                'The ⚔ Run a Fight tour (Home screen, 🎓 Guided Tours) walks the whole flow on the real screens.'
+            ]
+        },
+        combatEntry: {
+            step: 'Guided tips — Fight',
+            title: 'Start (or resume) a battle',
+            lines: [
+                '<strong>🆕 New Fight</strong> builds a battle from scratch; below it, your saved battles can be loaded, edited or deleted.',
+                'A battle saved mid-fight resumes with damage, Focus and conditions exactly where you left them. Prepared battles start everyone at full.',
+                'Running a whole adventure? <strong>📚 Campaigns</strong> at the bottom keeps a party\'s Health, Focus, Karma and conditions carrying from fight to fight.'
+            ]
+        },
+        combatSetup: {
+            step: 'Guided tips — Fight setup',
+            title: 'Stage the fighters',
+            lines: [
+                'Add heroes from your Vault on the Heroes side, and enemies or NPCs on the Narrator side — type them in by hand, or make quick Rank 1–2 foes with <strong>Build a Henchman</strong> in the Vault.',
+                'The same hero can be staged more than once, for copies like LMDs and henchman squads.',
+                'When both sides look right, use <strong>+ To Fight</strong> to bring everyone into combat.'
+            ]
+        },
+        combatFight: {
+            step: 'Guided tips — Combat',
+            title: 'Running the fight',
+            lines: [
+                'Work down the turn order. On the active fighter\'s card, tap a power to read exactly what it does, pick targets, and roll — your dice or the program\'s. Target numbers are figured out for you, and the Marvel die is only asked for after a hit lands.',
+                'Tap anyone on the roster strip up top to peek at their stats, damage or heal them, or let them <strong>⚡ Act / React</strong> out of turn.',
+                'Conditions are added from a fighter\'s card, and some tick damage automatically at the end of their turn. <strong>💾 Save Battle</strong> keeps a fight mid-swing; <strong>🏁 End Fight</strong> wraps it up.'
+            ]
         }
     };
 
@@ -35344,6 +35454,17 @@ window.bpVaultPickChoose = function(heroIndex) {
         var activeScreen = document.querySelector('.app-screen.screen-active');
         var screenId = activeScreen ? activeScreen.getAttribute('data-screen') : null;
         var tip = screenId && TIPS[screenId];
+        if (screenId === 'combat') {
+            // The Fight screen is one app screen with phases inside it —
+            // coach the phase the player is actually in.
+            var pk = null;
+            try {
+                if (typeof fightUiPhase !== 'undefined') {
+                    pk = fightUiPhase === 'entry' ? 'combatEntry' : (fightUiPhase === 'combat' ? 'combatFight' : 'combatSetup');
+                }
+            } catch(e) {}
+            if (pk && TIPS[pk]) tip = TIPS[pk];
+        }
         if (!tip || !activeScreen) return;
 
         var header = activeScreen.querySelector('.screen-header');
@@ -35505,7 +35626,7 @@ window.bpVaultPickChoose = function(heroIndex) {
     function byId(id) { return document.getElementById(id); }
     var STAT_IDS = ['melee', 'agility', 'resilience', 'vigilance', 'ego', 'logic'];
 
-    var wiz = { step: 0 };
+    var wiz = { step: 0, tour: 'hero' };
 
     /* ---------- inline tour chrome: banner + highlight (no overlays) ---------- */
     function ensureTourCSS() {
@@ -35595,6 +35716,152 @@ window.bpVaultPickChoose = function(heroIndex) {
           target: null, extras: 'review' }
     ];
 
+    /* ---------- more tours: Fight, Campaign, Vault ----------
+       Same shape as the hero tour — real screens, real controls, an
+       inline banner in document flow. A stop may carry a setup action
+       (flip a fight phase, open a panel) that runs right after
+       navigating, before its target is highlighted. Tours never create
+       or delete data; they show you where things live. */
+    function fightPhase(p) {
+        return function() { try { if (typeof bpSetFightPhase === 'function') bpSetFightPhase(p); } catch(e) {} };
+    }
+    var FIGHT_STOPS = [
+        { id: 'welcome', screen: 'combat', title: 'Run a fight — guided tour',
+          text: 'This is the Fight screen, where battles are built and run. We\'ll walk the whole flow: ' +
+                'start or load a battle, stage the fighters, then run it turn by turn.',
+          target: null, setup: fightPhase('entry') },
+        { id: 'entry', screen: 'combat', title: 'Start, load, or campaign',
+          text: 'Everything begins here. 🆕 New Fight builds a battle from scratch; saved battles below can be ' +
+                'loaded, edited, or resumed mid-fight with damage intact. 📚 Campaigns live at the bottom — ' +
+                'they get their own tour.',
+          target: function() { return byId('fightEntryPanel'); }, setup: fightPhase('entry') },
+        { id: 'heroes', screen: 'combat', title: 'Stage the heroes',
+          text: 'On the Heroes side you pull fighters in from your Vault — whole teams at once with the team ' +
+                'picker. Stage the same hero twice if you need copies, like LMD duplicates.',
+          target: function() { return byId('combatHeroRosterPanel'); }, setup: fightPhase('setup-heroes') },
+        { id: 'narrators', screen: 'combat', title: 'Stage the opposition',
+          text: 'The Narrator side is everyone the heroes are up against. Type NPCs in by hand, or pre-make ' +
+                'quick Rank 1–2 foes with Build a Henchman in the Vault and stage them here.',
+          target: function() { return byId('combatNarratorRosterPanel'); }, setup: fightPhase('setup-narrator') },
+        { id: 'tofight', screen: 'combat', title: 'Into combat',
+          text: 'With both sides staged, + To Fight brings everyone in and initiative is rolled. This panel is ' +
+                'the fight itself — the roster strip, the turn order, and every fighter\'s card.',
+          target: function() { return byId('activeCombat'); }, setup: fightPhase('combat') },
+        { id: 'activeturn', screen: 'combat', title: 'The Active Turn screen',
+          text: 'One fighter acts at a time. Their card lists every action and power; the roster strip up top ' +
+                'shows everyone\'s Health, Focus and conditions at a glance. Tap any chip to peek at that ' +
+                'fighter, damage or heal them, or let them ⚡ Act / React out of turn.',
+          target: function() { return byId('activeCombat'); }, setup: fightPhase('combat') },
+        { id: 'resolve', screen: 'combat', title: 'Using a power',
+          text: 'Tap a power on the active fighter\'s card and a popup opens: it shows exactly what the power ' +
+                'does, pre-picks the right M.A.R.V.E.L. stat, and figures out every target\'s TN for you. ' +
+                'Roll your own dice or let the program roll — and the Marvel die is only asked for after a ' +
+                'hit actually lands. Closing the popup uses nothing; only Confirm commits.',
+          target: null, setup: fightPhase('combat') },
+        { id: 'wrapup', screen: 'combat', title: 'Conditions, saving, ending',
+          text: 'Conditions are added from a fighter\'s card — tap one to read what it does, and the damaging ' +
+                'ones (Bleeding, Ablaze, Corroding) tick automatically at the end of that fighter\'s turn. ' +
+                '💾 Save Battle keeps a fight mid-swing; 🏁 End Fight wraps it up. In a campaign, ending the ' +
+                'fight is also what writes the party\'s state back.',
+          target: function() { return byId('fightCombatBar'); }, setup: fightPhase('combat') },
+        { id: 'done', screen: 'combat', title: 'That\'s a whole fight',
+          text: 'Start to finish: stage, roll initiative, work the turn order, end or save. Guided tips for ' +
+                'each phase stay on the Fight screen while Guided Mode is on — the other tours cover ' +
+                'campaigns and the Vault.',
+          target: null, setup: fightPhase('entry') }
+    ];
+    var CAMPAIGN_STOPS = [
+        { id: 'welcome', screen: 'combat', title: 'Run a campaign — guided tour',
+          text: 'Campaigns tie a string of fights into one adventure: the same party, with their Health, ' +
+                'Focus, Karma and conditions carrying from battle to battle. You\'ll find them on the Fight ' +
+                'screen, under the saved battles.',
+          target: function() { return byId('fightEntryPanel'); }, setup: fightPhase('entry') },
+        { id: 'create', screen: 'combat', title: 'Create the campaign',
+          text: 'Name the campaign and tap ＋ New campaign. It opens right here, ready for a party and a ' +
+                'queue of encounters. Nothing is shared or uploaded — campaigns live on this device.',
+          target: function() { return byId('campNameInput') || byId('fightEntryPanel'); }, setup: fightPhase('entry') },
+        { id: 'party', screen: 'combat', title: 'The party — state that persists',
+          text: '✎ Edit party picks the heroes from your Vault. Each hero\'s card shows the Health, Focus, ' +
+                'Karma and conditions they ended the last fight with — that\'s the state they start the next ' +
+                'one in. Steppers adjust by hand (say a teammate healed them between scenes), and ↺ Full ' +
+                'resets one hero completely.',
+          target: function() { return byId('fightEntryPanel'); },
+          setup: function() {
+              try {
+                  if (typeof bpSetFightPhase === 'function') bpSetFightPhase('entry');
+                  if (!window._bpOpenCampaignId && typeof bpGetCampaigns === 'function' && typeof bpCampaignOpen === 'function') {
+                      var cs = bpGetCampaigns();
+                      if (cs.length) bpCampaignOpen(cs[0].id);
+                  }
+              } catch(e) {}
+          } },
+        { id: 'queue', screen: 'combat', title: 'The encounter queue',
+          text: 'Build the adventure ahead of time: stage enemies in Fight setup and capture them with ' +
+                '＋ Add current Fight setup, or 📥 Import a saved battle. Party heroes are never baked in — ' +
+                'they join from the party at launch, at their carried-over state. Reorder with ↑ ↓ and tick ' +
+                'encounters off as you run them.',
+          target: function() { return byId('fightEntryPanel'); } },
+        { id: 'rest', screen: 'combat', title: 'The rest step',
+          text: 'Between encounters, the party can take it easy or sleep. The book\'s downtime math is applied ' +
+                'for you — rank per hour back in Health and Focus, double asleep — and heroes with Healing ' +
+                'Factor come back to full Health. The preview shows exactly what Apply will do, including ' +
+                'the full-night rule that fades earned Karma for heroes without the Heroic tag.',
+          target: function() { return byId('fightEntryPanel'); } },
+        { id: 'run', screen: 'combat', title: 'Running it',
+          text: '▶ Run stages the party at their carried-over state against fresh enemies. Ending the fight ' +
+                'with 🏁 End Fight writes everyone\'s state back and marks the encounter done — saving ' +
+                'mid-fight syncs the state too. Then rest, and run the next one.',
+          target: null }
+    ];
+    var VAULT_STOPS = [
+        { id: 'welcome', screen: 'vault', title: 'Tour the Vault',
+          text: 'The Vault is where every finished character lives, along with the shared libraries — items, ' +
+                'suits, vehicles and bases — and the quick NPC builder.',
+          target: null },
+        { id: 'list', screen: 'vault', title: 'Your heroes',
+          text: 'Every hero you complete is saved here. Search by name, open a hero to edit them, or use their ' +
+                'card for sheet PDFs, photos, and more.',
+          target: function() { return byId('vaultScreenContent'); } },
+        { id: 'libraries', screen: 'vault', title: 'The libraries',
+          text: 'Weapons Locker, Armory, Garage and Deeds are shared shelves: build an item, suit, vehicle or ' +
+                'base once, and any hero can use it. Deeds is also where headquarters live.',
+          target: function() { return byId('vaultQuickActions'); } },
+        { id: 'henchman', screen: 'vault', title: 'Build a Henchman',
+          text: 'Need a goon for tonight? Pick a rank (1–2), a stat shape, and up to two powers, traits and ' +
+                'tags — ten seconds later you have a complete NPC, ready to stage in a fight.',
+          target: function() {
+              var p = byId('henchmanPanel');
+              if (p && p.style.display !== 'none') return p;
+              return document.querySelector('button[onclick*="bpToggleHenchmanPanel"]');
+          },
+          setup: function() {
+              try {
+                  var p = byId('henchmanPanel');
+                  if (p && (p.style.display === 'none' || !p.style.display) && typeof bpToggleHenchmanPanel === 'function') bpToggleHenchmanPanel();
+              } catch(e) {}
+          } },
+        { id: 'cards', screen: 'vault', title: 'What a hero card can do',
+          text: 'From a hero\'s card you can rank them up (four new power picks per rank), set a photo, link a ' +
+                'second form that swaps in combat, copy a share code to send the hero to a friend, print ' +
+                'their sheets — or submit them to the Community Vault for other players.',
+          target: function() { return byId('vaultScreenContent'); } },
+        { id: 'done', screen: 'vault', title: 'That\'s the Vault',
+          text: 'Heroes, libraries, and instant henchmen. If a hero is ever deleted by accident, check the ' +
+                'trash at the bottom of this screen before it empties.',
+          target: null }
+    ];
+    var TOURS = { hero: STOPS, fight: FIGHT_STOPS, campaign: CAMPAIGN_STOPS, vault: VAULT_STOPS };
+    function curStops() { return TOURS[wiz.tour] || STOPS; }
+    // Entry point for the non-hero tours (Home / Settings hub buttons).
+    window._bpStartTour = function(name) {
+        if (!TOURS[name] || name === 'hero') return;
+        if (typeof window.bpSetGuidedMode === 'function') window.bpSetGuidedMode(true);
+        wiz.tour = name;
+        wiz.step = 0;
+        tourGo();
+    };
+
+
     function stopExtrasHTML(which) {
         if (which !== 'review') return '';
         var name = (byId('heroName') || {}).value || '(unnamed)';
@@ -35619,8 +35886,8 @@ window.bpVaultPickChoose = function(heroIndex) {
     function renderTourBanner() {
         var banner = byId('bpTourBanner');
         if (!banner) return;
-        var stop = STOPS[wiz.step];
-        var n = STOPS.length;
+        var stop = curStops()[wiz.step];
+        var n = curStops().length;
         banner.innerHTML =
             '<div class="bp-tour-head"><span class="bp-tour-step">STEP ' + (wiz.step + 1) + ' OF ' + n + '</span>' +
             '<button type="button" onclick="_bpWizSkip()" title="Exit tour">✕</button></div>' +
@@ -35640,8 +35907,9 @@ window.bpVaultPickChoose = function(heroIndex) {
         clearTourBanner();
         clearTourHighlight();
         ensureTourCSS();
-        var stop = STOPS[wiz.step];
+        var stop = curStops()[wiz.step];
         if (typeof window.appNavTo === 'function') window.appNavTo(stop.screen);
+        if (stop.setup) { try { stop.setup(); } catch(e) {} }
         var screen = byId('screen-' + stop.screen);
         var banner = document.createElement('div');
         banner.id = 'bpTourBanner';
@@ -35666,7 +35934,12 @@ window.bpVaultPickChoose = function(heroIndex) {
     }
 
     window._bpWizNext = function() {
-        if (wiz.step === STOPS.length - 1) {
+        if (wiz.step === curStops().length - 1) {
+            if (wiz.tour !== 'hero') {
+                endTour();
+                if (typeof showNotice === 'function') showNotice('🎓 Tour finished — everything you saw is live. Guided tips stay on until you turn them off in Settings.');
+                return;
+            }
             var hn = byId('heroName');
             if (hn && !hn.value.trim()) {
                 if (typeof showAlert === 'function') showAlert('Give your hero a name first — you can go back to the Name step.', 'Name Needed', '✏️');
@@ -35686,7 +35959,7 @@ window.bpVaultPickChoose = function(heroIndex) {
     };
     window._bpWizSkip = function() {
         endTour();
-        if (typeof window.appNavTo === 'function') window.appNavTo('bio');
+        if (wiz.tour === 'hero' && typeof window.appNavTo === 'function') window.appNavTo('bio');
     };
 
     /* ---------- entry ---------- */
@@ -35694,7 +35967,7 @@ window.bpVaultPickChoose = function(heroIndex) {
         function start() {
             if (typeof window._bpBeginHeroCreation === 'function') window._bpBeginHeroCreation(false);
             if (typeof window.bpSetGuidedMode === 'function') window.bpSetGuidedMode(true);
-            wiz.step = 0; wiz.concept = null;
+            wiz.step = 0; wiz.concept = null; wiz.tour = 'hero';
             tourGo();
         }
         var nameEl = byId('heroName');
