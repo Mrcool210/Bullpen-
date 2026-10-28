@@ -36063,7 +36063,8 @@ window.bpVaultPickChoose = function(heroIndex) {
         st.id = 'bpTourCSS';
         st.textContent =
             '.bp-tour-banner{margin:10px;padding:10px 12px;border:2px solid var(--primary,#2f81f7);' +
-            'border-radius:12px;background:var(--card-bg,#16202e);}' +
+            'border-radius:12px;background:var(--card-bg,#16202e);position:sticky;top:8px;z-index:30;' +
+            'scroll-margin-top:8px;box-shadow:0 6px 18px rgba(0,0,0,0.45);}' +
             '.bp-tour-head{display:flex;justify-content:space-between;align-items:center;gap:8px;' +
             'margin-bottom:5px;}' +
             '.bp-tour-step{font-size:.7em;letter-spacing:.08em;color:var(--text-label,#9fb0c3);white-space:nowrap;}' +
@@ -36389,10 +36390,23 @@ window.bpVaultPickChoose = function(heroIndex) {
         var tgt = null;
         try { tgt = stop.target ? stop.target() : null; } catch (e) { tgt = null; }
         var box = tourBox(tgt);
+        // Keep the explanation with the thing it explains: park the banner
+        // directly above the highlighted element (it sticks while scrolling),
+        // instead of leaving it stranded at the top of the screen.
+        if (box && box.parentNode && box !== screen && !(screen && box.contains(screen))) {
+            try {
+                banner.style.gridColumn = '1 / -1';
+                banner.style.flexBasis = '100%';
+                banner.style.width = '100%';
+                banner.style.boxSizing = 'border-box';
+                banner.style.margin = '10px 2px';
+                box.parentNode.insertBefore(banner, box);
+            } catch (e) {}
+        }
         if (box) {
             box.classList.add('bp-tour-highlight');
             setTimeout(function() {
-                try { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+                try { banner.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
             }, 150);
         } else {
             try { window.scrollTo(0, 0); } catch (e) {}
