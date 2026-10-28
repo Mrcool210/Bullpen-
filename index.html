@@ -35734,9 +35734,9 @@ window.bpVaultPickChoose = function(heroIndex) {
             step: 'Step 1 of 3 — Biography',
             title: 'Who is your hero?',
             lines: [
-                'Give them a <strong>Real Name</strong> and <strong>Hero Name</strong>, then a sentence or two about their origin.',
-                'Name, appearance, and backstory are just flavor — no wrong answers there. But <strong>Rank, Origin,</strong> and <strong>Occupation</strong> further down are the exceptions: Rank sets your stat and power budget, and Origin/Occupation can grant free powers or traits — so pick those with your concept in mind.',
-                'When you\'re happy with it, tap <strong>Next: Stats</strong> below.'
+                'Start with the big <strong>Rank</strong> card at the top — Step 1. It sets your stat points, power picks and trait budget, so it comes before everything else.',
+                '<strong>Origin</strong> and <strong>Occupation</strong> are the other picks that matter mechanically — they can grant free powers, traits and tags. Name, appearance and backstory are pure flavor: no wrong answers there.',
+                'The strip at the top of the build screens keeps your Rank, picks and points in view as you go. When you\'re happy, tap <strong>Next: Stats</strong> below.'
             ]
         },
         stats: {
@@ -35744,6 +35744,7 @@ window.bpVaultPickChoose = function(heroIndex) {
             title: 'M.A.R.V.E.L. ability scores',
             lines: [
                 'You\'re assigning six scores: <strong>Melee, Agility, Resilience, Vigilance, Ego,</strong> and <strong>Logic</strong>. Higher is better at that kind of action.',
+                'Set each score with the <strong>− / +</strong> steppers — the <strong>Points Allocated</strong> counter at the top tracks what\'s left, and each score\'s cap rises with your Rank.',
                 'Put your best scores where your concept needs them — a brawler wants Melee/Resilience, a detective wants Vigilance/Logic.',
                 'Nothing here is locked in — you can come back and adjust these before you finish building.'
             ]
@@ -35752,9 +35753,11 @@ window.bpVaultPickChoose = function(heroIndex) {
             step: 'Step 3 of 3 — Powers & Traits',
             title: 'Pick what makes them super',
             lines: [
-                'Every power costs "slots" from your budget — check the counter near the top of this screen to see how many you have left.',
+                'Every power costs "slots" from your budget — the strip stuck to the top of this screen keeps the count in view while you scroll.',
+                '<strong>Browse</strong> lists every power in a set with its full text, so you can read several before choosing; <strong>Search</strong> is faster when you know the name. Traits and tags browse the same way.',
                 'Start with <strong>2–3 powers</strong> that clearly fit your concept rather than grabbing everything at once. You can always add more as you rank up.',
                 'Traits are smaller narrative abilities and don\'t cost slots.',
+                'Changed your mind about a pick? Tap the <strong>▾ Text</strong> toggle on any power you\'ve added to re-read exactly what it does.',
                 'Ready? Tap <strong>✅ Complete Hero</strong> below to save your new character.'
             ]
         },
@@ -35764,6 +35767,7 @@ window.bpVaultPickChoose = function(heroIndex) {
             lines: [
                 'This is your home base: your current hero, shortcuts to every part of the sheet, and the big buttons that start things.',
                 '<strong>Create New Hero</strong> starts a fresh character, and <strong>🎓 Guided Mode</strong> walks you through it step by step. There are also guided tours for running a fight, running a campaign, and the Vault — find them right under the Guided Mode button.',
+                'If music is playing (Play Tools → 🎵 Music), a slim strip above the screens shows the track, with pause and skip.',
                 'Everything saves on this device automatically as you go.'
             ]
         },
@@ -35783,6 +35787,8 @@ window.bpVaultPickChoose = function(heroIndex) {
             lines: [
                 'Build the gear that defines a hero — a shield, a suit, a magic sword. Items can grant powers and damage bonuses while carried.',
                 '<strong>🎒 Owned Items</strong> is what the current hero has; <strong>⚒ Build / Edit</strong> makes new ones; the reference tab explains what item powers do.',
+                'In the builder, an item\'s own powers show their full descriptions right in the grid — and item powers are granted by the item, so they never spend the hero\'s power picks.',
+                '✦ Narrative Items (plot artifacts the Narrator controls) start tucked away at the bottom of this screen — open them only if your story needs one.',
                 'An iconic weapon\'s damage bonus is worked into the hero\'s attacks automatically — including in the Fight tracker.'
             ]
         },
@@ -35833,7 +35839,8 @@ window.bpVaultPickChoose = function(heroIndex) {
             lines: [
                 '<strong>🆕 New Fight</strong> builds a battle from scratch; below it, your saved battles can be loaded, edited or deleted.',
                 'A battle saved mid-fight resumes with damage, Focus and conditions exactly where you left them. Prepared battles start everyone at full.',
-                'Running a whole adventure? <strong>📚 Campaigns</strong> at the bottom keeps a party\'s Health, Focus, Karma and conditions carrying from fight to fight.'
+                'Running a whole adventure? <strong>📚 Campaigns</strong> at the bottom keeps a party\'s Health, Focus, Karma and conditions carrying from fight to fight.',
+                'Give a campaign encounter its own soundtrack with the <strong>🎵 Theme…</strong> button on its row — your music library lives in Play Tools → 🎵 Music.'
             ]
         },
         combatSetup: {
@@ -36105,13 +36112,20 @@ window.bpVaultPickChoose = function(heroIndex) {
           text: 'We\'ll walk through the real pages together: Bio, Stats, then Powers & Traits. ' +
                 'Everything you tap is the actual sheet, so there\'s nothing to re-learn later.',
           target: null },
+        { id: 'rank', screen: 'bio', title: 'Start with Rank — Step 1',
+          text: 'Rank comes first now, in the big card at the top of Bio: it sets your ability points, ' +
+                'power picks and trait budget. Most starting heroes are Rank 2–3; established names sit ' +
+                'at Rank 4–5. You can raise it later.',
+          target: function() { return byId('bpRankField') || byId('rank'); } },
         { id: 'identity', screen: 'bio', title: 'Name your hero',
-          text: 'Start at the top of the Bio page: give your hero a name (and a secret identity, if they have one).',
+          text: 'With rank set, give your hero a name (and a secret identity, if they have one) — ' +
+                'then their look and their story, all on this page.',
           target: function() { return byId('heroName'); } },
-        { id: 'rank', screen: 'bio', title: 'Choose a rank',
-          text: 'Rank sets your power budget: 4 power slots per rank. Most starting heroes are Rank 2–3; ' +
-                'established names sit at Rank 4–5. You can raise it later.',
-          target: function() { return byId('rank'); } },
+        { id: 'strip', screen: 'bio', title: 'Your build at a glance',
+          text: 'This strip rides along the top of the build screens — Rank, power picks, ability ' +
+                'points, traits and tags — so you never scroll back to check a budget. On the Powers ' +
+                'screen it sticks to the top while you browse.',
+          target: function() { return byId('bpStrip-bio'); } },
         { id: 'origin', screen: 'bio', title: 'Choose an origin',
           text: 'Origin is how your hero got their powers — pick one from the highlighted list. ' +
                 'It grants a free package of traits and tags.',
@@ -36120,17 +36134,35 @@ window.bpVaultPickChoose = function(heroIndex) {
           text: 'What your hero does day-to-day. Like origin, it grants free traits and tags.',
           target: function() { return byId('occupation'); } },
         { id: 'stats', screen: 'stats', title: 'M.A.R.V.E.L. ability scores',
-          text: 'Six scores: Melee, Agility, Resilience, Vigilance, Ego, Logic. Higher is better at that kind ' +
-                'of action — put your best scores where your hero needs them most. Nothing here is locked in.',
-          target: function() { return document.querySelector('.stat-grid'); } },
+          text: 'Six scores: Melee, Agility, Resilience, Vigilance, Ego, Logic. Set each one with the ' +
+                '− / + steppers — the counter at the top tracks your points as you spend. Put your best ' +
+                'scores where your hero needs them most; nothing here is locked in.',
+          target: function() { return byId('bpStepper-melee') || document.querySelector('.stat-grid'); } },
         { id: 'powers', screen: 'powers', title: 'Pick what makes them super',
-          text: 'Every power costs "slots" from your budget. Start with 2–3 that clearly fit your hero — ' +
-                'you can add more as you rank up. Browse the highlighted Powers list and tap to add.',
-          target: function() { return findHeading('powers', 'Powers'); } },
-        { id: 'traits', screen: 'powers', title: 'Traits',
-          text: 'Traits are smaller narrative abilities and don\'t cost power slots. Some are already granted ' +
-                'free by your Origin/Occupation and show up automatically.',
-          target: function() { return findHeading('powers', 'Traits'); } },
+          text: 'Pick a set and every power in it is listed with its full text — read as many as you ' +
+                'like, then tap + Add. Every power costs slots from your budget; the strip at the top ' +
+                'of the screen keeps count while you browse. Start with 2–3 that clearly fit your hero.',
+          target: function() { return byId('bpBrowsePowerList') || findHeading('powers', 'Powers'); },
+          setup: function() {
+              try {
+                  if (typeof powersSwitchSubTab === 'function') powersSwitchSubTab('powers');
+                  if (typeof switchTab === 'function') switchTab('power', 'browse');
+                  var ss = byId('setSelect');
+                  if (ss && !ss.value && ss.options.length > 1) ss.value = ss.options[1].value;
+                  if (typeof populatePowersBySet === 'function') populatePowersBySet();
+              } catch(e) {}
+          } },
+        { id: 'traits', screen: 'powers', title: 'Traits & tags',
+          text: 'Traits browse the same way — full text up front, add what fits. They don\'t cost power ' +
+                'slots, and the ones your Origin/Occupation grant show up automatically. Tags sit right ' +
+                'below, also readable before you add them.',
+          target: function() { return byId('bpBrowseTraitList') || findHeading('powers', 'Traits'); },
+          setup: function() {
+              try {
+                  if (typeof powersSwitchSubTab === 'function') powersSwitchSubTab('traits');
+                  if (typeof switchTab === 'function') switchTab('trait', 'browse');
+              } catch(e) {}
+          } },
         { id: 'review', screen: 'powers', title: 'Ready to finish?',
           text: 'Here\'s what you\'ve built. Finish the tour to keep customizing on the full sheet — ' +
                 'appearance, equipment, and more powers are all there whenever you want them.',
@@ -36222,6 +36254,20 @@ window.bpVaultPickChoose = function(heroIndex) {
                 'they join from the party at launch, at their carried-over state. Reorder with ↑ ↓ and tick ' +
                 'encounters off as you run them.',
           target: function() { return byId('fightEntryPanel'); } },
+        { id: 'theme', screen: 'combat', title: 'Boss themes',
+          text: 'Give a fight its own music: 🎵 Theme… on any encounter picks a track from your music ' +
+                'library (uploaded in Play Tools → 🎵 Music), and it takes over — looping — while that ' +
+                'encounter is fought, then hands back to your combat playlist.',
+          target: function() { return byId('fightEntryPanel'); },
+          setup: function() {
+              try {
+                  if (typeof bpSetFightPhase === 'function') bpSetFightPhase('entry');
+                  if (!window._bpOpenCampaignId && typeof bpGetCampaigns === 'function' && typeof bpCampaignOpen === 'function') {
+                      var cs = bpGetCampaigns();
+                      if (cs.length) bpCampaignOpen(cs[0].id);
+                  }
+              } catch(e) {}
+          } },
         { id: 'rest', screen: 'combat', title: 'The rest step',
           text: 'Between encounters, the party can take it easy or sleep. The book\'s downtime math is applied ' +
                 'for you — rank per hour back in Health and Focus, double asleep — and heroes with Healing ' +
@@ -37333,6 +37379,7 @@ function bpInitSteppers() {
         sel.setAttribute('data-bp-stepper', '1');
         var wrap = document.createElement('span');
         wrap.className = 'bp-stepper';
+        wrap.id = 'bpStepper-' + stat;
         wrap.innerHTML = '<button type="button" data-bp-step="' + stat + '" data-bp-dir="-1" aria-label="Decrease">−</button>'
             + '<span class="bp-step-val" id="bpStepVal-' + stat + '">' + _bpEsc(sel.value) + '</span>'
             + '<button type="button" data-bp-step="' + stat + '" data-bp-dir="1" aria-label="Increase">+</button>';
