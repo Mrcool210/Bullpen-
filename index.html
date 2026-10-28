@@ -3655,6 +3655,15 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 </div>
 <!-- Fields -->
 <div class="bio-row" style="flex:1 1 260px; min-width:260px;">
+<div class="bio-field" id="bpRankField">
+<label style="font-size:0.85em;">Rank — Step 1 · choose this first<button type="button" class="bp-hint-btn" data-bp-hint-field="1" title="What does this affect?" onclick="bpToggleFieldHint(this,'rank')">ⓘ</button></label>
+<select id="rank" style="font-size:1.1em;padding:10px;font-weight:bold;width:100%;" onchange="if(typeof populateOriginSelects==='function')populateOriginSelects(); updateUI(); renderSchooling(); if(typeof renderRankBuilds==='function')renderRankBuilds();">
+<option value="1">Rank 1</option><option value="2">Rank 2</option><option value="3">Rank 3</option>
+<option value="4">Rank 4</option><option value="5">Rank 5</option><option value="6">Rank 6</option>
+<option value="X">Rank X</option>
+</select>
+<div class="bp-hint-popover" id="bpHintPopover-rank">Rank measures your training and power — it sets your ability score point budget, how many power sets/powers/traits you can pick, and it also equals your starting Karma.</div>
+</div>
 <div class="bio-field"><label>Hero Name</label><input id="heroName" type="text"></div>
 <div class="bio-field"><label>Real Name</label><input id="realName" type="text"></div>
 <div class="bio-field"><label>Gender</label><input id="gender" placeholder="e.g. Male, Female, Non-binary..." type="text"></div>
@@ -3680,15 +3689,6 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <div class="bio-field"><label>Eyes</label><input id="eyes" placeholder="e.g. Blue, Glowing red..." type="text"></div>
 <div class="bio-field"><label>Hair</label><input id="hair" placeholder="e.g. Black, Blonde, None..." type="text"></div>
 <div class="bio-field"><label>Distinguishing Features</label><input id="distinguishingFeatures" placeholder="e.g. Scar on left cheek, wings..." type="text"></div>
-<div class="bio-field">
-<label>Rank<button type="button" class="bp-hint-btn" data-bp-hint-field="1" title="What does this affect?" onclick="bpToggleFieldHint(this,'rank')">ⓘ</button></label>
-<select id="rank" onchange="if(typeof populateOriginSelects==='function')populateOriginSelects(); updateUI(); renderSchooling(); if(typeof renderRankBuilds==='function')renderRankBuilds();">
-<option value="1">1</option><option value="2">2</option><option value="3">3</option>
-<option value="4">4</option><option value="5">5</option><option value="6">6</option>
-<option value="X">X</option>
-</select>
-<div class="bp-hint-popover" id="bpHintPopover-rank">Rank measures your training and power — it sets your ability score point budget, how many power sets/powers/traits you can pick, and it also equals your starting Karma.</div>
-</div>
 <div class="bio-field"><label>Origin<button type="button" class="bp-hint-btn" data-bp-hint-field="1" title="What does this affect?" onclick="bpToggleFieldHint(this,'origin')">ⓘ</button></label>
 <select id="origin" onchange="applyOrigin()" style="width:100%;"></select>
 <button onclick="openOriginBrowser('origin')" style="margin-top:4px;width:100%;padding:5px 10px;font-size:0.75em;background:var(--bg-inset);border:1px solid var(--border-light);color:var(--text-sub);border-radius:5px;cursor:pointer;text-align:left;">🔍 Browse Origins</button>
@@ -5514,7 +5514,8 @@ Galactus normally keeps it on his starship, the Taa II, and can recall it at wil
 </div>
 <div style="margin-bottom:10px;">
 <label style="font-size:0.7em;color:var(--text-label);font-weight:bold;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:4px;">Item-Specific Powers</label>
-<div id="iiItemPowerGrid" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+<div id="iiItemPowerGrid" class="bp-item-power-grid"></div>
+<div style="font-size:0.76em;color:var(--text-sub);margin-top:6px;">Item powers are granted by the item itself — they don't spend the character's power picks.</div>
 </div>
 <div style="margin-bottom:10px;">
 <label style="font-size:0.7em;color:var(--text-label);font-weight:bold;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:4px;">Restrictions <span style="font-weight:normal;">(each −1 Power Value; max 1 per type except Obvious)</span></label>
@@ -10471,7 +10472,7 @@ function render(arr, id, fn) {
           style="margin-top:6px; font-size:0.78em; padding:5px 8px; border-radius:4px; width:100%; background:var(--bg-inset); border:1px solid var(--border-light); color:var(--text-main);">` : ""}
     </div>
     <div style="display:flex;gap:4px;align-items:center;flex-shrink:0;padding-top:2px;">
-      <button style="background:none;border:none;color:var(--text-sub);cursor:pointer;font-size:0.75em;padding:2px 5px;" onclick="(()=>{const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none';})()">▾</button>
+      <button style="background:none;border:none;color:var(--text-sub);cursor:pointer;font-size:0.75em;padding:2px 5px;" onclick="(()=>{const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none';})()">▾ Text</button>
       ${effectiveGrantSrc && !manualOwned ? '<span title="Change the granting source to remove this power" style="font-size:0.72em;color:#667;cursor:default;">🔒</span>' : `<button class="rem-btn" title="${effectiveGrantSrc ? 'Remove manual backup; free grant remains' : 'Remove power'}" onclick="${fn}(${i})">[X]</button>`}
     </div>
   </div>
@@ -10521,7 +10522,7 @@ function render(arr, id, fn) {
     <div style="display:flex;gap:4px;align-items:center;flex-shrink:0;">
       ${badgeHtml}
       <button title="Edit this custom power" style="background:none;border:1px solid #aa4400;color:#ff8844;cursor:pointer;font-size:0.72em;padding:2px 6px;border-radius:3px;" onclick="editCustomPowerFromSheet('${x.replace(/'/g,"\\'")}')">✏ Edit</button>
-      <button style="background:none;border:none;color:var(--text-sub);cursor:pointer;font-size:0.75em;padding:2px 5px;" onclick="(()=>{const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none';})()">▾</button>
+      <button style="background:none;border:none;color:var(--text-sub);cursor:pointer;font-size:0.75em;padding:2px 5px;" onclick="(()=>{const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none';})()">▾ Text</button>
       ${effectiveGrantSrc && !manualOwned ? '<span title="Change the granting source to remove this power" style="font-size:0.72em;color:#667;cursor:default;">🔒</span>' : `<button class="rem-btn" title="${effectiveGrantSrc ? 'Remove manual backup; free grant remains' : 'Remove power'}" onclick="${fn}(${i})">[X]</button>`}
     </div>
   </div>
@@ -22282,7 +22283,7 @@ async function exportCharacterPDF(layout='standard') {
         }
 
                 // ── Sort powers into categories, then by focus cost ────────────────
-        const NAME_H = 8, LINE_H = 6.0, GAP_ROW = 1.5;
+        const NAME_H = 8, LINE_H = 6.4, GAP_ROW = 2.6;
         const CAT_HEAD_H = 8; // height of a category header line
         // Powers that were upgraded (e.g. a free "Grow 1" grant replaced by a manually-picked
         // "Grow 2") shouldn't also show the original grant — match the on-screen builder,
@@ -24961,13 +24962,14 @@ function iiRenderItemPowerGrid() {
     if(!grid) return;
     grid.innerHTML = Object.keys(ITEM_SPECIFIC_POWERS).map(p => {
         const active = _iiSelectedItemPowers.includes(p);
-        return `<button onclick="iiToggleItemPower('${p.replace(/'/g,"\\\'")}')"
-            style="font-size:0.72em;padding:3px 10px;border-radius:4px;cursor:pointer;
-            border:1px solid ${active?'var(--accent2)':'var(--border)'};
-            background:${active?'rgba(0,229,255,0.15)':'var(--bg-inset)'};
-            color:${active?'var(--accent2)':'var(--text-sub)'};
-            font-weight:${active?'bold':'normal'};transition:all 0.15s;"
-            title="${ITEM_SPECIFIC_POWERS[p]}">${p}</button>`;
+        const safeP = p.replace(/'/g, "\\'");
+        return '<button onclick="iiToggleItemPower(\'' + safeP + '\')" '
+            + 'style="text-align:left;font-size:0.78em;padding:8px 10px;border-radius:6px;cursor:pointer;'
+            + 'border:1px solid ' + (active ? 'var(--accent2)' : 'var(--border)') + ';'
+            + 'background:' + (active ? 'rgba(0,229,255,0.15)' : 'var(--bg-inset)') + ';'
+            + 'color:var(--text-main);transition:all 0.15s;">'
+            + '<span style="display:block;font-weight:bold;margin-bottom:3px;color:' + (active ? 'var(--accent2)' : 'var(--text-main)') + ';">' + p + (active ? ' ✓' : '') + '</span>'
+            + '<span style="display:block;font-size:0.88em;font-weight:normal;color:var(--text-sub);line-height:1.45;">' + ITEM_SPECIFIC_POWERS[p] + '</span></button>';
     }).join('');
 }
 
@@ -37136,6 +37138,365 @@ function bpCampaignEncMusicSet(campId, encId, trackId) {
             bpMusicRenderAll();
         });
         setInterval(bpMusicReconcile, 1500);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+})();
+</script>
+
+<style id="bpRedesignCss">
+/* ── Redesign pass (2026-10-28): layout only, no logic ─────────────── */
+.bp-browse-list { display:grid; grid-template-columns:1fr; gap:8px; margin-top:10px; width:100%; }
+.bp-item-power-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.bp-build-strip { display:flex; gap:8px 16px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; margin-bottom:12px; font-size:0.82em; color:var(--text-sub); }
+.bp-build-strip strong { color:var(--text-main); }
+#screen-powers .bp-build-strip { position:sticky; top:8px; z-index:6; box-shadow:0 4px 14px rgba(0,0,0,0.35); }
+#bpRankField { border:1px solid var(--accent-gold); border-left:5px solid var(--accent-gold); background:rgba(232,200,64,0.06); border-radius:8px; padding:10px 12px; }
+.bp-stepper { display:inline-flex; align-items:center; gap:8px; }
+.bp-stepper button { width:36px; height:36px; font-size:1.1em; font-weight:bold; background:var(--bg-inset); border:1px solid var(--border); border-radius:8px; color:var(--text-main); cursor:pointer; padding:0; }
+.bp-stepper .bp-step-val { min-width:34px; text-align:center; font-size:1.25em; font-weight:bold; color:var(--text-main); }
+/* Ability boxes: columns instead of one full-width stack */
+@media (min-width:600px) {
+  .stat-grid, body.ui-modern .stat-grid, body.ui-compact .stat-grid, body.ui-mobile-lite .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+}
+@media (min-width:1100px) {
+  .stat-grid, body.ui-modern .stat-grid, body.ui-compact .stat-grid, body.ui-mobile-lite .stat-grid { grid-template-columns:repeat(3,1fr); }
+  .bp-browse-list { grid-template-columns:1fr 1fr; }
+  .bp-item-power-grid { grid-template-columns:repeat(4,1fr); }
+}
+/* Wide-screen pass: form screens stop stretching across a monitor;
+   Vault and Fight keep the full width on purpose. */
+@media (min-width:1024px) {
+  #screen-bio .bio-section, #screen-stats .stats-panel, #screen-powers .loadout-box, #screen-equipment .bio-section { max-width:920px; margin-left:auto; margin-right:auto; }
+  #screen-bio .bp-build-strip, #screen-stats .bp-build-strip, #screen-powers .bp-build-strip, #screen-equipment .bp-build-strip, #bpNewCharBanner { max-width:920px; margin-left:auto; margin-right:auto; }
+  .home-section-grid { grid-template-columns:repeat(3,1fr); }
+  #iiName { max-width:560px; }
+  #iiPanelBuild input[type="text"] { max-width:560px; }
+}
+@media (min-width:1400px) {
+  .home-section-grid { grid-template-columns:repeat(4,1fr); }
+}
+</style>
+<script>
+/* ============================================================
+   REDESIGN PASS — browsable add-lists, ability steppers, build
+   summary strips, creation banner, narrative demotion.
+   Everything here is additive: the original selects stay in the
+   DOM (hidden) as the data path every calculation already reads,
+   the same pattern the app's search mode uses for traits/tags.
+   ============================================================ */
+function bpMergedData(a, b) {
+    var out = {};
+    try { if (a) Object.keys(a).forEach(function(k){ out[k] = a[k]; }); } catch(e) {}
+    try { if (b) Object.keys(b).forEach(function(k){ out[k] = b[k]; }); } catch(e) {}
+    return out;
+}
+function bpAllPowersData() { return bpMergedData((typeof powersData !== 'undefined' ? powersData : null), (typeof customPowersData !== 'undefined' ? customPowersData : null)); }
+function bpAllTraitsData() { return bpMergedData((typeof traitsData !== 'undefined' ? traitsData : null), (typeof customTraitsData !== 'undefined' ? customTraitsData : null)); }
+function bpAllTagsData() { return bpMergedData((typeof tagsData !== 'undefined' ? tagsData : null), (typeof customTagsData !== 'undefined' ? customTagsData : null)); }
+function bpBrowseEffectHtml(data) {
+    if (!data || !data.effect) return '';
+    var base = data.effect, fant = data.fantastic || '';
+    try {
+        if (typeof splitEffect === 'function') { var sp = splitEffect(data.effect); base = sp.base || ''; if (sp.fantastic) fant = sp.fantastic; }
+    } catch(e) {}
+    var h = '';
+    if (base) h += '<div style="font-size:0.8em;color:#ccc;line-height:1.5;">' + base + '</div>';
+    if (fant) h += '<div style="font-size:0.76em;background:rgba(255,180,0,0.09);border-left:3px solid var(--accent-gold);border-radius:3px;padding:5px 8px;margin-top:5px;color:var(--accent-gold);line-height:1.5;"><span style="font-weight:bold;">⚡ Fantastic:</span> ' + String(fant).replace(/^On a Fantastic success[,:]?\s*/i, '') + '</div>';
+    return h;
+}
+function bpBrowseRowHtml(name, metaLine, data, added, addFn) {
+    return '<div style="background:#111;border:1px solid #333;border-left:4px solid ' + (added ? '#44aa44' : 'var(--shield-blue)') + ';border-radius:5px;padding:9px 10px;">'
+        + '<div style="display:flex;gap:8px;align-items:flex-start;">'
+        + '<div style="flex:1;min-width:0;"><div style="font-weight:bold;font-size:0.92em;">' + _bpEsc(name) + (added ? ' <span style="color:#88ff88;font-size:0.78em;">✓ added</span>' : '') + '</div>'
+        + (metaLine ? '<div style="font-size:0.74em;color:#999;margin:2px 0 5px;">' + metaLine + '</div>' : '')
+        + bpBrowseEffectHtml(data)
+        + '</div>'
+        + '<button type="button" data-bp-name="' + _bpEsc(name) + '" onclick="' + addFn + '(this.getAttribute(\'data-bp-name\'))" style="flex-shrink:0;width:auto;padding:7px 13px;font-size:0.85em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">+ Add</button>'
+        + '</div></div>';
+}
+function bpEnsureBrowseList(panelId, listId) {
+    var panel = document.getElementById(panelId);
+    if (!panel) return null;
+    var list = document.getElementById(listId);
+    if (!list) {
+        list = document.createElement('div');
+        list.id = listId;
+        list.className = 'bp-browse-list';
+        panel.appendChild(list);
+    }
+    return list;
+}
+
+/* ---------- Powers browse list ---------- */
+function bpRenderBrowsePowers() {
+    var list = bpEnsureBrowseList('powerPanelBrowse', 'bpBrowsePowerList');
+    if (!list) return;
+    var setSel = document.getElementById('setSelect');
+    var chosenSet = setSel ? setSel.value : '';
+    if (!chosenSet) { list.innerHTML = '<div style="font-size:0.82em;color:#888;">Pick a power set above — every power in it is listed here with its full text, so you can read before you add.</div>'; return; }
+    var all = bpAllPowersData();
+    var rankRaw = (typeof getRankRawValue === 'function') ? getRankRawValue() : '1';
+    var names = Object.keys(all).filter(function(n) {
+        var d = all[n];
+        return d && d.set && d.set.split(', ').includes(chosenSet);
+    }).sort(function(a, b){ return a.localeCompare(b); });
+    list.innerHTML = names.map(function(n) {
+        var d = all[n];
+        var reqRank = (typeof powerRankReqs !== 'undefined' && powerRankReqs[n]) || 1;
+        var locked = false;
+        try { locked = (typeof rankMeetsRequirement === 'function') && !rankMeetsRequirement(rankRaw, reqRank); } catch(e) {}
+        var cost = 1;
+        try { if (typeof getPowerCost === 'function') cost = getPowerCost(n); } catch(e) {}
+        var meta = _bpEsc(d.set || '') + ' · Costs ' + cost + ' slot' + (cost > 1 ? 's' : '');
+        if (reqRank > 1) meta += ' · <span style="color:' + (locked ? '#ff6b6b' : '#ffcc44') + ';">' + (locked ? '🔒 ' : '') + 'Requires Rank ' + reqRank + '</span>';
+        try { if (typeof powerPrereqs !== 'undefined' && powerPrereqs[n]) meta += ' · <span style="color:#ffaa44;">⚠ Prereqs: ' + _bpEsc(powerPrereqs[n].join(', ')) + '</span>'; } catch(e) {}
+        var added = false;
+        try { added = (typeof charP !== 'undefined') && charP.some(function(x){ return x === n || x.indexOf(n + ' ') === 0; }); } catch(e) {}
+        return bpBrowseRowHtml(n, meta, d, added, 'bpBrowseAddPower');
+    }).join('') || '<div style="font-size:0.82em;color:#888;">No powers in this set.</div>';
+}
+function bpBrowseAddPower(name) {
+    if (typeof addPowerWithChecks === 'function') addPowerWithChecks(name);
+    setTimeout(bpRenderBrowsePowers, 500);
+}
+
+/* ---------- Traits + tags browse lists ---------- */
+function bpRenderBrowseTraits() {
+    var list = bpEnsureBrowseList('traitPanelBrowse', 'bpBrowseTraitList');
+    if (!list) return;
+    var all = bpAllTraitsData();
+    var names = Object.keys(all).sort(function(a, b){ return a.localeCompare(b); });
+    list.innerHTML = names.map(function(n) {
+        var added = false;
+        try { added = (typeof charT !== 'undefined') && charT.includes(n); } catch(e) {}
+        return bpBrowseRowHtml(n, '', all[n], added, 'bpBrowseAddTrait');
+    }).join('');
+}
+function bpBrowseAddTrait(name) {
+    var sel = document.getElementById('tSelect');
+    if (sel) sel.value = name;
+    if (sel && sel.value === name && typeof manualAdd === 'function') manualAdd('trait');
+    else if (typeof showNotice === 'function') showNotice('"' + name + '" could not be added from the list — try the search tab.');
+    setTimeout(bpRenderBrowseTraits, 300);
+}
+function bpRenderBrowseTags() {
+    var list = bpEnsureBrowseList('tagPanelBrowse', 'bpBrowseTagList');
+    if (!list) return;
+    var all = bpAllTagsData();
+    var names = Object.keys(all).sort(function(a, b){ return a.localeCompare(b); });
+    list.innerHTML = names.map(function(n) {
+        var added = false;
+        try { added = (typeof charTags !== 'undefined') && charTags.includes(n); } catch(e) {}
+        return bpBrowseRowHtml(n, '', all[n], added, 'bpBrowseAddTag');
+    }).join('');
+}
+function bpBrowseAddTag(name) {
+    var sel = document.getElementById('tagSelect');
+    if (sel) sel.value = name;
+    if (sel && sel.value === name && typeof manualAdd === 'function') manualAdd('tag');
+    else if (typeof showNotice === 'function') showNotice('"' + name + '" could not be added from the list — try the dropdown above.');
+    setTimeout(bpRenderBrowseTags, 300);
+}
+
+/* ---------- Item powers browse list ---------- */
+function bpRenderBrowseItemPowers() {
+    var list = bpEnsureBrowseList('iiPowerPanelBrowse', 'bpBrowseItemPowerList');
+    if (!list) return;
+    var setSel = document.getElementById('iiSetSelect');
+    var chosenSet = setSel ? setSel.value : '';
+    if (!chosenSet) { list.innerHTML = '<div style="font-size:0.82em;color:#888;">Pick a power set above — every power in it is listed here with its full text.</div>'; return; }
+    var all = bpAllPowersData();
+    var names = Object.keys(all).filter(function(n) {
+        var d = all[n];
+        return d && d.set && d.set.split(', ').includes(chosenSet);
+    }).sort(function(a, b){ return a.localeCompare(b); });
+    list.innerHTML = names.map(function(n) {
+        var added = false;
+        try { added = (typeof _iiSelectedPowers !== 'undefined') && _iiSelectedPowers.includes(n); } catch(e) {}
+        return bpBrowseRowHtml(n, _bpEsc(all[n].set || ''), all[n], added, 'bpBrowseAddItemPower');
+    }).join('') || '<div style="font-size:0.82em;color:#888;">No powers in this set.</div>';
+}
+function bpBrowseAddItemPower(name) {
+    var sel = document.getElementById('iiPSelect');
+    if (sel) sel.value = name;
+    if (typeof iiAddFromBrowse === 'function') iiAddFromBrowse();
+    setTimeout(bpRenderBrowseItemPowers, 300);
+}
+
+/* ---------- Ability steppers ---------- */
+var BP_STEP_STATS = ['melee','agility','resilience','vigilance','ego','logic'];
+function bpInitSteppers() {
+    BP_STEP_STATS.forEach(function(stat) {
+        var sel = document.getElementById(stat);
+        if (!sel || sel.getAttribute('data-bp-stepper')) return;
+        sel.setAttribute('data-bp-stepper', '1');
+        var wrap = document.createElement('span');
+        wrap.className = 'bp-stepper';
+        wrap.innerHTML = '<button type="button" data-bp-step="' + stat + '" data-bp-dir="-1" aria-label="Decrease">−</button>'
+            + '<span class="bp-step-val" id="bpStepVal-' + stat + '">' + _bpEsc(sel.value) + '</span>'
+            + '<button type="button" data-bp-step="' + stat + '" data-bp-dir="1" aria-label="Increase">+</button>';
+        sel.parentNode.insertBefore(wrap, sel);
+        sel.style.display = 'none';
+    });
+}
+function bpStepStat(stat, dir) {
+    var sel = document.getElementById(stat);
+    if (!sel) return;
+    var values = Array.prototype.map.call(sel.options, function(o){ return o.value; });
+    var idx = values.indexOf(sel.value);
+    if (idx === -1) idx = 0;
+    var next = Math.max(0, Math.min(values.length - 1, idx + dir));
+    if (values[next] === sel.value) return;
+    sel.value = values[next];
+    try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch(e) {}
+    if (typeof updateUI === 'function') updateUI();
+    bpSyncSteppers();
+}
+function bpSyncSteppers() {
+    BP_STEP_STATS.forEach(function(stat) {
+        var sel = document.getElementById(stat);
+        var val = document.getElementById('bpStepVal-' + stat);
+        if (sel && val && val.textContent !== sel.value) val.textContent = sel.value;
+    });
+}
+document.addEventListener('click', function(e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-bp-step]') : null;
+    if (btn) bpStepStat(btn.getAttribute('data-bp-step'), parseInt(btn.getAttribute('data-bp-dir'), 10) || 0);
+});
+
+/* ---------- Build summary strips + creation banner ---------- */
+function bpStripText() {
+    var parts = [];
+    try {
+        var rankSel = document.getElementById('rank');
+        if (rankSel) parts.push('Rank <strong>' + _bpEsc(rankSel.value) + '</strong>');
+    } catch(e) {}
+    try {
+        if (typeof currentSlots !== 'undefined' && typeof getMaxSlots === 'function' && typeof getRankNumber === 'function' && typeof getRankRawValue === 'function') {
+            parts.push('Power picks <strong>' + currentSlots + ' / ' + getMaxSlots(getRankNumber(getRankRawValue())) + '</strong>');
+        }
+    } catch(e) {}
+    try {
+        var spd = document.getElementById('statPointsDisplay');
+        if (spd && spd.textContent) parts.push('Ability points <strong>' + _bpEsc(spd.textContent.trim()) + '</strong>');
+    } catch(e) {}
+    try {
+        if (typeof countedTraitList === 'function') parts.push('Traits <strong>' + countedTraitList().length + '</strong>');
+    } catch(e) {}
+    try {
+        if (typeof charTags !== 'undefined') parts.push('Tags <strong>' + charTags.length + '</strong>');
+    } catch(e) {}
+    return parts.join('<span style="opacity:0.45;">·</span>');
+}
+function bpInitStripsAndBanner() {
+    ['bio','stats','powers','equipment'].forEach(function(name) {
+        var screen = document.getElementById('screen-' + name);
+        if (!screen || document.getElementById('bpStrip-' + name)) return;
+        var strip = document.createElement('div');
+        strip.className = 'bp-build-strip';
+        strip.id = 'bpStrip-' + name;
+        var header = screen.querySelector('.screen-header');
+        if (header && header.parentNode === screen) screen.insertBefore(strip, header.nextSibling);
+        else screen.insertBefore(strip, screen.firstChild);
+    });
+    var bio = document.getElementById('screen-bio');
+    if (bio && !document.getElementById('bpNewCharBanner')) {
+        var banner = document.createElement('div');
+        banner.id = 'bpNewCharBanner';
+        banner.style.cssText = 'display:none;padding:10px 14px;background:rgba(68,136,255,0.10);border:1px solid #4488ff;border-left:5px solid #4488ff;border-radius:8px;margin-bottom:12px;font-size:0.88em;line-height:1.5;';
+        banner.innerHTML = '👋 <strong>You\'re building a new character.</strong> Everything on these screens belongs to this one hero — start with <strong>Rank</strong> below, since it sets your budgets and picks. Name, look, and story can come any time.';
+        var strip = document.getElementById('bpStrip-bio');
+        if (strip) bio.insertBefore(banner, strip.nextSibling);
+        else bio.insertBefore(banner, bio.firstChild);
+    }
+}
+function bpRedesignTick() {
+    var text = bpStripText();
+    ['bio','stats','powers','equipment'].forEach(function(name) {
+        var strip = document.getElementById('bpStrip-' + name);
+        if (strip && strip.innerHTML !== text) strip.innerHTML = text;
+    });
+    var banner = document.getElementById('bpNewCharBanner');
+    if (banner) {
+        var fresh = true;
+        try {
+            var nm = document.getElementById('heroName');
+            if (nm && nm.value.trim()) fresh = false;
+            if (typeof charP !== 'undefined' && charP.length) fresh = false;
+            if (typeof charT !== 'undefined' && charT.length) fresh = false;
+            if (typeof charTags !== 'undefined' && charTags.length) fresh = false;
+        } catch(e) {}
+        banner.style.display = fresh ? 'block' : 'none';
+    }
+    bpSyncSteppers();
+}
+
+/* ---------- Narrative items: collapsed by default ---------- */
+function bpInitNarrativeCollapse() {
+    var section = document.getElementById('narrativeItemsSection');
+    if (!section || section.getAttribute('data-bp-collapsed')) return;
+    section.setAttribute('data-bp-collapsed', '1');
+    var h3 = section.querySelector('h3');
+    if (!h3) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'bpNarrativeItemsBody';
+    wrap.style.display = 'none';
+    var kids = Array.prototype.slice.call(section.childNodes);
+    kids.forEach(function(node) { if (node !== h3) wrap.appendChild(node); });
+    section.appendChild(wrap);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = 'width:auto;padding:6px 12px;font-size:0.8em;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;color:var(--text-sub);cursor:pointer;margin-bottom:4px;';
+    btn.textContent = '▸ Show narrative items (advanced)';
+    btn.onclick = function() {
+        var open = wrap.style.display !== 'none';
+        wrap.style.display = open ? 'none' : 'block';
+        btn.textContent = open ? '▸ Show narrative items (advanced)' : '▾ Hide narrative items';
+    };
+    h3.parentNode.insertBefore(btn, h3.nextSibling);
+}
+
+/* ---------- Hide the old second dropdowns (selects stay as data) ---------- */
+function bpHideOldPickers() {
+    function hideRow(el) { if (!el) return; var row = el.closest('div'); if (row) row.style.display = 'none'; else el.style.display = 'none'; }
+    hideRow(document.getElementById('pSelect'));
+    var pp = document.getElementById('powerPreview'); if (pp) pp.style.display = 'none';
+    hideRow(document.getElementById('tSelect'));
+    hideRow(document.getElementById('tagSelect'));
+    hideRow(document.getElementById('iiPSelect'));
+    var ip = document.getElementById('iiPowerPreview'); if (ip) ip.style.display = 'none';
+}
+
+/* ---------- Wiring ---------- */
+(function() {
+    function init() {
+        bpInitSteppers();
+        bpInitStripsAndBanner();
+        bpInitNarrativeCollapse();
+        bpHideOldPickers();
+        bpRenderBrowseTraits();
+        bpRenderBrowseTags();
+        bpRenderBrowsePowers();
+        bpRedesignTick();
+        setInterval(bpRedesignTick, 1500);
+        try {
+            var origPop = populatePowersBySet;
+            populatePowersBySet = function() { origPop(); bpRenderBrowsePowers(); };
+        } catch(e) {}
+        try {
+            var origIiPop = iiPopulatePowersBySet;
+            iiPopulatePowersBySet = function() { origIiPop(); bpRenderBrowseItemPowers(); };
+        } catch(e) {}
+        try {
+            var origSwitch = switchTab;
+            switchTab = function(section, mode) {
+                origSwitch(section, mode);
+                if (section === 'power' && mode === 'browse') bpRenderBrowsePowers();
+                if (section === 'trait' && mode === 'browse') bpRenderBrowseTraits();
+                if (section === 'tag' && mode === 'browse') bpRenderBrowseTags();
+            };
+        } catch(e) {}
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
