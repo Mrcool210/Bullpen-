@@ -19622,7 +19622,7 @@ function bpCampaignWriteBack(markDone) {
     if(!ctx) return;
     const camp = bpCampaignById(ctx.campaignId);
     if(!camp) { window._bpCampaignCtx = null; return; }
-    Object.keys(ctx.uids || {}).forEach(function(vaultId) {
+    if(!ctx.fresh) Object.keys(ctx.uids || {}).forEach(function(vaultId) {
         const c = combatants.find(function(x){ return x.uid === ctx.uids[vaultId]; });
         const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
         if(!c || !p) return;
@@ -19630,11 +19630,23 @@ function bpCampaignWriteBack(markDone) {
         p.hp = st.hp; p.fp = st.fp; p.karma = st.karma; p.conds = st.conds; p.condAmt = st.condAmt;
         p.name = c.baseName;
     });
+    if(ctx.villainUid && camp.villain && !ctx.fresh) {
+        const vc = combatants.find(function(x){ return x.uid === ctx.villainUid; });
+        if(vc) {
+            const vst = bpCampaignCaptureState(vc);
+            vst.maxHp = vc.maxHp; vst.maxFp = vc.maxFp;
+            camp.villain.state = vst;
+            if(vst.hp <= 0) bpCampaignLog(camp, '\u{1F479} ' + camp.villain.name + ' went down at 0 Health — state saved as-is; the narrator decides what happens to them.');
+        }
+    }
     let encName = '';
     if(markDone) {
         const enc = camp.encounters.find(function(e){ return e.id === ctx.encounterId; });
         if(enc) { enc.done = true; encName = enc.name; }
     }
+    if(markDone && encName) bpCampaignLog(camp, ctx.fresh
+        ? ('Ran "' + encName + '" as a fresh start — party state unchanged.')
+        : ('Finished "' + encName + '" — party state saved.'));
     camp.updatedAt = Date.now();
     bpSaveCampaign(camp);
     if(markDone) {
@@ -19648,23 +19660,41 @@ function bpCampaignRunEncounter(campId, encId) {
     if(!camp) return;
     const enc = camp.encounters.find(function(e){ return e.id === encId; });
     if(!enc) return;
+    if(enc.kind === 'scene') { if(typeof showNotice === 'function') showNotice('Interludes are not fought — play the scene out, then mark it ✓ Done.'); return; }
     if(!camp.party.length) { if(typeof showNotice === 'function') showNotice('Add heroes to the party first (✎ Edit party).'); return; }
+    const active = camp.party.filter(function(p){ return !p.bench; });
+    if(!active.length) { if(typeof showNotice === 'function') showNotice('Everyone in the party is benched — activate a hero from their card first.'); return; }
     const doLaunch = function() {
-        const partyEntries = camp.party.map(function(p) {
-            const st = bpCampaignPartyState(camp, p);
+        const partyEntries = active.map(function(p) {
             const e = { kind: 'vault', vaultId: p.vaultId, qty: 1, side: 'hero' };
-            if(st) {
-                if(st.conds.length) { e.conds = st.conds.slice(); if(Object.keys(st.condAmt).length) e.condAmt = Object.assign({}, st.condAmt); }
-                e.state = { hp: st.hp, fp: st.fp, karma: st.karma };
+            if(!enc.fresh) {
+                const st = bpCampaignPartyState(camp, p);
+                if(st) {
+                    if(st.conds.length) { e.conds = st.conds.slice(); if(Object.keys(st.condAmt).length) e.condAmt = Object.assign({}, st.condAmt); }
+                    e.state = { hp: st.hp, fp: st.fp, karma: st.karma };
+                }
             }
             return e;
         });
-        bpStageEncounter({ name: enc.name, saveKind: 'prepared', entries: partyEntries.concat(enc.entries || []) }, -1);
+        let enemyEntries = JSON.parse(JSON.stringify(enc.entries || []));
+        let villainApplied = false;
+        if(!enc.fresh && camp.villain && camp.villain.state) {
+            const names = enemyEntries.map(function(e){ return bpCampaignEntryName(e); });
+            const applied = bpCampaignApplyVillain(enemyEntries, names, camp.villain);
+            enemyEntries = applied.entries;
+            villainApplied = applied.applied;
+        }
+        bpStageEncounter({ name: enc.name, saveKind: 'prepared', entries: partyEntries.concat(enemyEntries) }, -1);
         const uids = {};
         combatants.forEach(function(c) {
             if(c.side === 'hero' && c.vaultId && !uids[c.vaultId] && camp.party.some(function(p){ return p.vaultId === c.vaultId; })) uids[c.vaultId] = c.uid;
         });
-        window._bpCampaignCtx = { campaignId: camp.id, encounterId: enc.id, uids: uids };
+        let villainUid = null;
+        if(villainApplied) {
+            const vc = combatants.find(function(c){ return c.side === 'narrator' && c.baseName === camp.villain.name; });
+            if(vc) villainUid = vc.uid;
+        }
+        window._bpCampaignCtx = { campaignId: camp.id, encounterId: enc.id, uids: uids, villainUid: villainUid, fresh: !!enc.fresh };
         bpSetFightPhase('combat');
     };
     if(typeof bpStatefulFight === 'function' && bpStatefulFight()) {
@@ -19707,7 +19737,7 @@ function bpCampaignEditParty(id) {
             + '<span style="flex:1;font-size:0.85em;">' + _bpEsc(info ? info.name : (h.heroName || 'Hero')) + ' <span style="color:#888;">· Rank ' + (info ? info.rank : '?') + '</span></span></label>';
     }).join('');
     _showPickerModal('🦸 Party — ' + _bpEsc(camp.name),
-        '<div style="font-size:0.82em;color:#999;">Checked heroes form the party, and anyone already in the party keeps their carried-over state. Unchecked heroes leave the party and their saved state is discarded.</div>'
+        '<div style="font-size:0.82em;color:#999;">Checked heroes form the party, and anyone already in the party keeps their carried-over state. Unchecked heroes leave the party and their saved state is discarded. To sit a hero out without losing their state, use Bench on their card instead.</div>'
         + '<div style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;">' + rows + '</div>'
         + '<button onclick="bpCampaignEditPartySave(\'' + id + '\')" style="padding:11px;font-size:0.9em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">✓ Save party</button>');
 }
@@ -19779,12 +19809,14 @@ function bpCampaignRestApply(id) {
     const r = window._bpRest || { hours: 2, mode: 'easy' };
     const lines = [];
     camp.party.forEach(function(p) {
+        if(p.bench) return;
         const st = bpCampaignPartyState(camp, p);
         if(!st) return;
         const out = bpCampaignRestCalc(st, st.info, r.hours, r.mode);
         p.hp = out.hp; p.fp = out.fp; p.karma = out.karma;
         lines.push(st.info.name + ': Health ' + st.hp + ' → ' + out.hp + ', Focus ' + st.fp + ' → ' + out.fp + (out.karmaFaded ? ', earned Karma faded' : ''));
     });
+    bpCampaignLog(camp, 'The party ' + (r.mode === 'sleep' ? 'slept' : 'took it easy') + ' for ' + r.hours + 'h.');
     camp.updatedAt = Date.now();
     bpSaveCampaign(camp);
     bpRenderFightEntry();
@@ -19852,6 +19884,7 @@ function bpCampaignEncToggle(id, encId) {
     const enc = camp.encounters.find(function(e){ return e.id === encId; });
     if(!enc) return;
     enc.done = !enc.done;
+    if(enc.done && enc.kind === 'scene') bpCampaignLog(camp, 'Played the interlude "' + (enc.name || 'Interlude') + '".');
     camp.updatedAt = Date.now();
     bpSaveCampaign(camp);
     bpRenderFightEntry();
@@ -19877,6 +19910,323 @@ function bpCampaignEncMove(id, encId, dir) {
     bpSaveCampaign(camp);
     bpRenderFightEntry();
 }
+// ---- Campaign expansion: log, notes, scenes, bench, recovery, villain,
+// difficulty, export/import (2026-10-28) ----
+// Appends a dated line to the campaign log (oldest first, capped so a
+// long campaign cannot bloat storage).
+function bpCampaignLog(camp, text) {
+    if(!camp || !text) return;
+    if(!Array.isArray(camp.log)) camp.log = [];
+    camp.log.push(new Date().toLocaleDateString('en-CA') + ' — ' + text);
+    if(camp.log.length > 200) camp.log.splice(0, camp.log.length - 200);
+}
+function bpCampaignLogAdd(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    bpPromptText('📜 Campaign log — ' + camp.name, 'Log entry:', function(text) {
+        bpCampaignLog(camp, text);
+        camp.updatedAt = Date.now();
+        bpSaveCampaign(camp);
+        bpRenderFightEntry();
+    });
+}
+function bpCampaignLogDelete(id, idx) {
+    const camp = bpCampaignById(id);
+    if(!camp || !Array.isArray(camp.log)) return;
+    camp.log.splice(idx, 1);
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+// Display name for a queued entry, whichever kind it is.
+function bpCampaignEntryName(e) {
+    if(!e) return 'Fighter';
+    if(e.kind === 'vault') { const info = bpCampaignHeroInfo(e.vaultId); return info ? info.name : 'Vault hero'; }
+    return e.name || 'Fighter';
+}
+// Pure: returns a cloned entry list with the villain's saved state
+// attached to the FIRST narrator-side entry whose display name matches.
+// Copies beyond the first start fresh, like any other fighter.
+function bpCampaignApplyVillain(entries, names, villain) {
+    const out = (entries || []).map(function(e){ return JSON.parse(JSON.stringify(e)); });
+    if(!villain || !villain.name || !villain.state) return { entries: out, applied: false };
+    for(let i = 0; i < out.length; i++) {
+        if((out[i].side || 'narrator') !== 'narrator') continue;
+        if(names[i] !== villain.name) continue;
+        const st = villain.state;
+        out[i].state = { hp: st.hp, fp: st.fp, karma: st.karma || 0 };
+        if(typeof st.maxHp === 'number') out[i].state.maxHp = st.maxHp;
+        if(typeof st.maxFp === 'number') out[i].state.maxFp = st.maxFp;
+        if(st.conds && st.conds.length) { out[i].conds = st.conds.slice(); if(st.condAmt) out[i].condAmt = Object.assign({}, st.condAmt); }
+        return { entries: out, applied: true };
+    }
+    return { entries: out, applied: false };
+}
+function bpCampaignVillainPick(campId, encId) {
+    const camp = bpCampaignById(campId);
+    if(!camp) return;
+    const enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if(!enc) return;
+    const names = [];
+    (enc.entries || []).forEach(function(e) {
+        if((e.side || 'narrator') !== 'narrator') return;
+        const nm = bpCampaignEntryName(e);
+        if(names.indexOf(nm) === -1) names.push(nm);
+    });
+    if(!names.length) { if(typeof showNotice === 'function') showNotice('No narrator-side fighters in this encounter to flag.'); return; }
+    const rows = names.map(function(nm) {
+        const on = camp.villain && camp.villain.name === nm;
+        return '<button onclick="bpCampaignVillainSet(\'' + campId + '\',\'' + _bpEsc(nm).replace(/'/g, "\\'") + '\')" style="text-align:left;padding:9px 10px;font-size:0.85em;background:#161616;border:1px solid ' + (on ? '#aa4422' : '#2c2c2c') + ';border-radius:5px;color:#ddd;cursor:pointer;">👹 ' + _bpEsc(nm) + (on ? ' <span style="color:#ffaa77;">(current villain)</span>' : '') + '</button>';
+    }).join('');
+    _showPickerModal('👹 Recurring villain — ' + _bpEsc(camp.name),
+        '<div style="font-size:0.82em;color:#999;">One villain per campaign. The first fighter with the chosen name, on the narrator side of any encounter, starts at the Health, Focus and conditions they ended their last fight with — the nemesis who keeps escaping. Everyone else always starts fresh.</div>'
+        + '<div style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;">' + rows + '</div>');
+}
+function bpCampaignVillainSet(campId, name) {
+    const camp = bpCampaignById(campId);
+    if(!camp) return;
+    const keep = (camp.villain && camp.villain.name === name) ? camp.villain.state : null;
+    camp.villain = { name: name, state: keep || null };
+    bpCampaignLog(camp, '👹 ' + name + ' is the recurring villain — their state now carries between encounters.');
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    _closePickerModal();
+    bpRenderFightEntry();
+}
+function bpCampaignVillainClear(campId) {
+    const camp = bpCampaignById(campId);
+    if(!camp || !camp.villain) return;
+    bpCampaignLog(camp, '👹 ' + camp.villain.name + ' is no longer the recurring villain.');
+    camp.villain = null;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignBenchToggle(id, vaultId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
+    if(!p) return;
+    p.bench = !p.bench;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+// The book's Recovery action, between fights (Core, Recovery): spend 1
+// Karma and make a Resilience (Health) or Vigilance (Focus) check vs
+// TN 10; on a success recover Marvel die x rank, doubled on a Fantastic.
+function bpCampaignRecoveryCalc(rank, total, marvelDie, fantastic) {
+    const success = (parseInt(total, 10) || 0) >= 10;
+    let amount = success ? (parseInt(marvelDie, 10) || 0) * (parseInt(rank, 10) || 1) : 0;
+    if(success && fantastic) amount *= 2;
+    return { success: success, amount: amount };
+}
+function bpCampaignRecovery(id, vaultId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
+    if(!p) return;
+    const st = bpCampaignPartyState(camp, p);
+    if(!st) return;
+    const rc = window._bpCampRec && window._bpCampRec.vaultId === vaultId
+        ? window._bpCampRec : { vaultId: vaultId, field: 'hp', total: 9, marvel: 3, fantastic: false };
+    window._bpCampRec = rc;
+    const out = bpCampaignRecoveryCalc(st.info.rank, rc.total, rc.marvel, rc.fantastic);
+    const target = rc.field === 'hp' ? st.hp : st.fp;
+    const max = rc.field === 'hp' ? st.info.maxHp : st.info.maxFp;
+    const gained = out.success ? Math.min(out.amount, Math.max(0, max - target)) : 0;
+    const stepB = 'width:30px;height:30px;font-size:0.9em;background:#222;border:1px solid #555;border-radius:5px;color:#eee;cursor:pointer;padding:0;';
+    const fld = function(f, label) {
+        const on = rc.field === f;
+        return '<button onclick="bpCampaignRecoveryField(\'' + f + '\')" style="flex:1;padding:9px;font-size:0.85em;font-weight:bold;border-radius:6px;cursor:pointer;' + (on ? 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;' : 'background:#222;border:1px solid #444;color:#ccc;') + '">' + label + '</button>';
+    };
+    _showPickerModal('🎲 Recovery — ' + _bpEsc(st.info.name),
+        '<div style="font-size:0.82em;color:#999;">The book\'s Recovery action: spend <strong style="color:#e8c86a;">1 Karma</strong> and make a ' + (rc.field === 'hp' ? 'Resilience' : 'Vigilance') + ' check vs TN 10. Success recovers Marvel die × rank (' + st.info.rank + '), doubled on a Fantastic success. The Karma is spent either way.</div>'
+        + '<div style="font-size:0.85em;color:#cc9;">✦ Karma available: ' + st.karma + (st.karma < 1 ? ' — not enough to attempt a Recovery' : '') + '</div>'
+        + '<div style="display:flex;gap:6px;">' + fld('hp', '💚 Health (Resilience)') + fld('fp', '💙 Focus (Vigilance)') + '</div>'
+        + '<div style="display:flex;gap:6px;align-items:center;"><span style="flex:1;font-size:0.82em;color:#999;">Dice total rolled</span>'
+        + '<button onclick="bpCampaignRecoveryAdj(\'total\',-1)" style="' + stepB + '">−</button><span style="min-width:30px;text-align:center;font-weight:bold;">' + rc.total + '</span><button onclick="bpCampaignRecoveryAdj(\'total\',1)" style="' + stepB + '">+</button></div>'
+        + '<div style="display:flex;gap:6px;align-items:center;"><span style="flex:1;font-size:0.82em;color:#999;">Marvel die</span>'
+        + '<button onclick="bpCampaignRecoveryAdj(\'marvel\',-1)" style="' + stepB + '">−</button><span style="min-width:30px;text-align:center;font-weight:bold;">' + rc.marvel + '</span><button onclick="bpCampaignRecoveryAdj(\'marvel\',1)" style="' + stepB + '">+</button></div>'
+        + '<button onclick="bpCampaignRecoveryFantastic()" style="padding:8px;font-size:0.82em;border-radius:6px;cursor:pointer;' + (rc.fantastic ? 'background:#4a3600;border:1px solid #aa8822;color:#ffdd66;font-weight:bold;' : 'background:#222;border:1px solid #444;color:#ccc;') + '">★ Fantastic success: ' + (rc.fantastic ? 'ON (recovery doubled)' : 'off') + '</button>'
+        + '<div style="font-size:0.85em;color:' + (out.success ? '#8fd98a' : '#ff9999') + ';">' + (out.success ? ('Success — would recover ' + out.amount + ' ' + (rc.field === 'hp' ? 'Health' : 'Focus') + (gained < out.amount ? ' (' + gained + ' after the cap)' : '') + '.') : 'Below TN 10 — no recovery, and the Karma is still spent.') + '</div>'
+        + '<button onclick="bpCampaignRecoveryApply(\'' + id + '\',\'' + vaultId + '\')" style="padding:11px;font-size:0.9em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">🎲 Spend 1 Karma &amp; recover</button>');
+}
+function bpCampaignRecoveryField(f) {
+    const rc = window._bpCampRec || {};
+    rc.field = f;
+    window._bpCampRec = rc;
+    const camp = bpGetCampaigns().find(function(c){ return (c.party || []).some(function(p){ return p.vaultId === rc.vaultId; }); });
+    if(camp) bpCampaignRecovery(camp.id, rc.vaultId);
+}
+function bpCampaignRecoveryAdj(field, delta) {
+    const rc = window._bpCampRec || {};
+    if(field === 'total') rc.total = Math.max(3, Math.min(18, (rc.total || 9) + delta));
+    if(field === 'marvel') rc.marvel = Math.max(1, Math.min(6, (rc.marvel || 3) + delta));
+    window._bpCampRec = rc;
+    const camp = bpGetCampaigns().find(function(c){ return (c.party || []).some(function(p){ return p.vaultId === rc.vaultId; }); });
+    if(camp) bpCampaignRecovery(camp.id, rc.vaultId);
+}
+function bpCampaignRecoveryFantastic() {
+    const rc = window._bpCampRec || {};
+    rc.fantastic = !rc.fantastic;
+    window._bpCampRec = rc;
+    const camp = bpGetCampaigns().find(function(c){ return (c.party || []).some(function(p){ return p.vaultId === rc.vaultId; }); });
+    if(camp) bpCampaignRecovery(camp.id, rc.vaultId);
+}
+function bpCampaignRecoveryApply(id, vaultId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const p = camp.party.find(function(x){ return x.vaultId === vaultId; });
+    if(!p) return;
+    const st = bpCampaignPartyState(camp, p);
+    const rc = window._bpCampRec || { field: 'hp', total: 9, marvel: 3, fantastic: false };
+    if(!st || st.karma < 1) { if(typeof showNotice === 'function') showNotice('Recovery costs 1 Karma — this hero has none to spend.'); return; }
+    const out = bpCampaignRecoveryCalc(st.info.rank, rc.total, rc.marvel, rc.fantastic);
+    p.karma = st.karma - 1;
+    let msg;
+    if(out.success) {
+        if(rc.field === 'hp') { p.hp = Math.min(st.info.maxHp, st.hp + out.amount); msg = st.info.name + ' recovers ' + Math.min(out.amount, st.info.maxHp - st.hp) + ' Health.'; }
+        else { p.fp = Math.min(st.info.maxFp, st.fp + out.amount); msg = st.info.name + ' recovers ' + Math.min(out.amount, st.info.maxFp - st.fp) + ' Focus.'; }
+    } else {
+        msg = st.info.name + '\'s Recovery check fails — no recovery, and the Karma is spent.';
+    }
+    window._bpCampRec = null;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    _closePickerModal();
+    bpRenderFightEntry();
+    if(typeof showNotice === 'function') showNotice(msg);
+}
+function bpCampaignEncDuplicate(id, encId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const i = camp.encounters.findIndex(function(e){ return e.id === encId; });
+    if(i < 0) return;
+    const copy = JSON.parse(JSON.stringify(camp.encounters[i]));
+    copy.id = 'e' + Date.now().toString(36) + 'x';
+    copy.name = (copy.name || 'Encounter') + ' (copy)';
+    copy.done = false;
+    camp.encounters.splice(i + 1, 0, copy);
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignEncFreshToggle(id, encId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if(!enc) return;
+    enc.fresh = !enc.fresh;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    bpRenderFightEntry();
+}
+function bpCampaignEncNotes(id, encId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if(!enc) return;
+    _showPickerModal('📝 Notes — ' + _bpEsc(enc.name || 'Encounter'),
+        '<textarea id="bpCampEncNotesText" rows="6" placeholder="Traps, cameos, secrets, what the heroes do not know yet…" style="width:100%;box-sizing:border-box;padding:8px 10px;font-size:0.85em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">' + _bpEsc(enc.notes || '') + '</textarea>'
+        + '<button onclick="bpCampaignEncNotesSave(\'' + id + '\',\'' + encId + '\')" style="padding:11px;font-size:0.9em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">✓ Save notes</button>');
+}
+function bpCampaignEncNotesSave(id, encId) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    const enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if(!enc) return;
+    const el = document.getElementById('bpCampEncNotesText');
+    enc.notes = el ? el.value : '';
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    _closePickerModal();
+    bpRenderFightEntry();
+}
+function bpCampaignAddScene(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    bpPromptText('📖 Interlude — ' + camp.name, 'Name the scene (a place, a conversation, a montage…):', function(name) {
+        camp.encounters.push({ id: 'e' + Date.now().toString(36), kind: 'scene', name: name, done: false, notes: '', entries: [] });
+        camp.updatedAt = Date.now();
+        bpSaveCampaign(camp);
+        bpRenderFightEntry();
+    });
+}
+// Pure difficulty math: Team Rank is the average of the party's (up to)
+// six highest ranks, rounded up (Avengers p.124).
+function bpCampaignDifficultyCalc(partyRanks, enemySum) {
+    if(!partyRanks || !partyRanks.length) return null;
+    const top = partyRanks.slice().sort(function(a, b){ return b - a; }).slice(0, 6);
+    const teamRank = Math.ceil(top.reduce(function(a, b){ return a + b; }, 0) / top.length);
+    const partySum = partyRanks.reduce(function(a, b){ return a + b; }, 0);
+    const ratio = (parseInt(enemySum, 10) || 0) / Math.max(1, partySum);
+    const label = ratio < 0.6 ? '💤 Light' : (ratio < 1.1 ? '⚖ Fair' : (ratio < 1.6 ? '🔥 Tough' : '☠ Brutal'));
+    return { teamRank: teamRank, partySum: partySum, enemySum: parseInt(enemySum, 10) || 0, label: label };
+}
+function bpCampaignDifficulty(camp, enc) {
+    if(!camp || !enc || enc.kind === 'scene') return null;
+    const ranks = camp.party.filter(function(p){ return !p.bench; }).map(function(p) {
+        const info = bpCampaignHeroInfo(p.vaultId);
+        return info ? info.rank : 0;
+    }).filter(function(r){ return r > 0; });
+    let enemySum = 0;
+    (enc.entries || []).forEach(function(e) {
+        if((e.side || 'narrator') !== 'narrator') return;
+        const qty = Math.max(1, parseInt(e.qty, 10) || 1);
+        let rank = parseInt(e.rank, 10) || 0;
+        if(e.kind === 'vault') { const info = bpCampaignHeroInfo(e.vaultId); rank = info ? info.rank : 1; }
+        enemySum += (rank || 1) * qty;
+    });
+    return bpCampaignDifficultyCalc(ranks, enemySum);
+}
+function bpCampaignExport(id) {
+    const camp = bpCampaignById(id);
+    if(!camp) return;
+    _showPickerModal('⬆ Export campaign — ' + _bpEsc(camp.name),
+        '<div style="font-size:0.82em;color:#999;">Copy this somewhere safe — it is the whole campaign: party state, encounter queue, villain and log. Paste it back with 📥 Import on the Campaigns list to restore or move it.</div>'
+        + '<textarea readonly rows="8" style="width:100%;box-sizing:border-box;padding:8px 10px;font-size:0.72em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">' + _bpEsc(JSON.stringify(camp)) + '</textarea>');
+}
+function bpCampaignImportOpen() {
+    _showPickerModal('📥 Import campaign',
+        '<div style="font-size:0.82em;color:#999;">Paste an exported campaign. Its heroes join by Vault ID — on a different device, any hero that is not in that Vault shows as missing until the hero is imported too.</div>'
+        + '<textarea id="bpCampImportText" rows="8" placeholder="Paste the campaign export here…" style="width:100%;box-sizing:border-box;padding:8px 10px;font-size:0.72em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);"></textarea>'
+        + '<button onclick="bpCampaignImportDo()" style="padding:11px;font-size:0.9em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">📥 Import</button>');
+}
+// Pure import validation/normalization: returns a campaign object safe
+// to store, or null for anything that is not a campaign export.
+function bpCampaignValidateImport(obj, newId) {
+    if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    if(typeof obj.name !== 'string' || !Array.isArray(obj.party) || !Array.isArray(obj.encounters)) return null;
+    const camp = JSON.parse(JSON.stringify(obj));
+    camp.id = newId;
+    camp.createdAt = Date.now();
+    camp.updatedAt = Date.now();
+    camp.party = camp.party.filter(function(p){ return p && typeof p.vaultId === 'string'; });
+    camp.encounters = camp.encounters.filter(function(e){ return e && typeof e.name === 'string'; });
+    camp.encounters.forEach(function(e, i) {
+        if(!e.id) e.id = 'ei' + i;
+        if(!Array.isArray(e.entries)) e.entries = [];
+    });
+    if(!Array.isArray(camp.log)) camp.log = [];
+    if(camp.villain !== null && (typeof camp.villain !== 'object' || typeof camp.villain.name !== 'string')) camp.villain = null;
+    return camp;
+}
+function bpCampaignImportDo() {
+    const el = document.getElementById('bpCampImportText');
+    let obj = null;
+    try { obj = JSON.parse(el ? el.value : ''); } catch(e) {}
+    const camp = bpCampaignValidateImport(obj, 'c' + Date.now().toString(36));
+    if(!camp) { if(typeof showNotice === 'function') showNotice('That does not look like a campaign export — nothing imported.'); return; }
+    const list = bpGetCampaigns();
+    list.push(camp);
+    bpSaveCampaigns(list);
+    window._bpOpenCampaignId = camp.id;
+    _closePickerModal();
+    bpRenderFightEntry();
+    if(typeof showNotice === 'function') showNotice('Campaign "' + camp.name + '" imported.');
+}
+
 function bpCampaignsHtml() {
     const list = bpGetCampaigns();
     const openId = window._bpOpenCampaignId;
@@ -19889,6 +20239,7 @@ function bpCampaignsHtml() {
         + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">'
         + '<input id="campNameInput" type="text" placeholder="Campaign name…" style="flex:1;min-width:140px;padding:6px 10px;font-size:0.8em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
         + '<button onclick="bpCampaignCreate()" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">＋ New campaign</button>'
+        + '<button onclick="bpCampaignImportOpen()" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">📥 Import</button>'
         + '</div>';
     if(!list.length) {
         h += '<div style="font-size:0.8em;color:#666;font-style:italic;">No campaigns yet.</div>';
@@ -19913,8 +20264,15 @@ function bpCampaignPanelHtml(camp) {
         + '<span style="flex:1;font-size:1.05em;font-weight:bold;letter-spacing:1px;min-width:140px;">📚 ' + _bpEsc(camp.name || 'Campaign') + '</span>'
         + '<button onclick="bpCampaignClose()" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">← All campaigns</button>'
         + '<button onclick="bpCampaignEditParty(\'' + cid + '\')" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">✎ Edit party</button>'
+        + '<button onclick="bpCampaignExport(\'' + cid + '\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">⬆ Export</button>'
         + '<button onclick="bpCampaignDelete(\'' + cid + '\')" style="' + btn + 'background:#3a0a0a;border:1px solid #6a1a1a;color:#ff9999;">🗑 Delete</button>'
         + '</div>';
+    if(camp.villain && camp.villain.name) {
+        const vs = camp.villain.state;
+        h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 10px;background:#1c1210;border:1px solid #5a2a1a;border-radius:5px;margin-bottom:4px;">'
+            + '<span style="flex:1;font-size:0.82em;min-width:160px;">👹 <strong>Recurring villain: ' + _bpEsc(camp.villain.name) + '</strong> <span style="color:#aa8877;">' + (vs ? ('— last seen at Health ' + vs.hp + ' / ' + (vs.maxHp != null ? vs.maxHp : '?') + ' · Focus ' + vs.fp + (vs.conds && vs.conds.length ? ' · ' + _bpEsc(vs.conds.join(', ')) : '')) : '— not yet encountered in this campaign') + '</span></span>'
+            + '<button onclick="bpCampaignVillainClear(\'' + cid + '\')" style="' + btn + 'background:#222;border:1px solid #555;color:#ddd;">Clear</button></div>';
+    }
     // -- Party state --
     h += '<div style="font-size:0.78em;color:#888;text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px;">🦸 Party — carries between fights</div>';
     if(!camp.party.length) {
@@ -19931,11 +20289,13 @@ function bpCampaignPanelHtml(camp) {
         const fpPct = Math.max(0, Math.round((st.fp / info.maxFp) * 100));
         const hpColor = hpPct > 50 ? '#44ff88' : hpPct > 25 ? '#ffcc00' : '#ff4444';
         const adj = function(field, d, label) { return '<button onclick="bpCampaignAdjust(\'' + cid + '\',\'' + p.vaultId + '\',\'' + field + '\',' + d + ')" style="' + step + '" title="' + label + '">' + label + '</button>'; };
-        h += '<div style="padding:9px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
-            + '<div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;"><span style="flex:1;font-size:0.88em;font-weight:bold;min-width:120px;">' + _bpEsc(info.name) + ' <span style="color:#888;font-weight:normal;">· Rank ' + info.rank + '</span>' + (info.hasHF ? ' <span style="color:#7be495;" title="Healing Factor — Health returns to full when the party rests">💚 Healing Factor</span>' : '') + '</span>'
+        h += '<div style="padding:9px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;' + (p.bench ? 'opacity:0.55;' : '') + '">'
+            + '<div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;"><span style="flex:1;font-size:0.88em;font-weight:bold;min-width:120px;">' + _bpEsc(info.name) + ' <span style="color:#888;font-weight:normal;">· Rank ' + info.rank + '</span>' + (info.hasHF ? ' <span style="color:#7be495;" title="Healing Factor — Health returns to full when the party rests">💚 Healing Factor</span>' : '') + (p.bench ? ' <span style="color:#cc9;">🪑 Benched — sits out fights and rests; state kept</span>' : '') + '</span>'
             + '<span style="font-size:0.8em;color:#cc9;">✦ Karma ' + st.karma + '</span>'
             + '<button onclick="bpCampaignAdjust(\'' + cid + '\',\'' + p.vaultId + '\',\'karma\',-1)" style="' + step + '">−</button>'
             + '<button onclick="bpCampaignAdjust(\'' + cid + '\',\'' + p.vaultId + '\',\'karma\',1)" style="' + step + '">+</button>'
+            + '<button onclick="bpCampaignRecovery(\'' + cid + '\',\'' + p.vaultId + '\')" style="' + btn + 'background:#222;border:1px solid #555;color:#ddd;" title="Recovery action: spend 1 Karma, Resilience or Vigilance check vs TN 10">🎲 Recovery</button>'
+            + '<button onclick="bpCampaignBenchToggle(\'' + cid + '\',\'' + p.vaultId + '\')" style="' + btn + 'background:#222;border:1px solid #555;color:#ddd;" title="Benched heroes keep their state but sit out fights and rests">' + (p.bench ? '▶ Activate' : '🪑 Bench') + '</button>'
             + '<button onclick="bpCampaignFullHeal(\'' + cid + '\',\'' + p.vaultId + '\')" style="' + btn + 'background:#222;border:1px solid #555;color:#ddd;" title="Reset this hero to full Health and Focus">↺ Full</button></div>'
             + '<div style="display:flex;gap:5px;align-items:center;margin-top:7px;"><span style="width:52px;font-size:0.75em;color:#999;">Health</span>'
             + '<div style="flex:1;height:9px;background:#222;border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + hpPct + '%;background:' + hpColor + ';"></div></div>'
@@ -19971,9 +20331,11 @@ function bpCampaignPanelHtml(camp) {
         + '</div>'
         + '<div style="font-size:0.78em;color:#888;margin-top:7px;">Book rates: regain lost Health and Focus equal to rank per hour of taking it easy, double that asleep. Healing Factor heroes regain all their Health. '
         + ((r.mode === 'sleep' && r.hours >= 8) ? '<span style="color:#ffcc66;">A full night\'s sleep: earned Karma fades for heroes without the Heroic tag.</span>' : '')
+        + (camp.party.some(function(p){ return p.bench; }) ? '<div style="font-size:0.78em;color:#888;margin-top:4px;">Benched heroes do not rest.</div>' : '')
         + '</div>';
     const previews = [];
     camp.party.forEach(function(p) {
+        if(p.bench) return;
         const st = bpCampaignPartyState(camp, p);
         if(!st) return;
         const out = bpCampaignRestCalc(st, st.info, r.hours, r.mode);
@@ -19992,22 +20354,70 @@ function bpCampaignPanelHtml(camp) {
         h += '<div style="font-size:0.82em;color:#666;font-style:italic;">No encounters queued. Stage enemies in Fight setup and capture them here, or import a saved battle.</div>';
     }
     camp.encounters.forEach(function(enc, ei) {
+        const cidE = cid, encId = enc.id;
+        const act = 'width:auto;padding:4px 9px;font-size:0.74em;background:#222;border:1px solid #444;border-radius:4px;color:#ccc;cursor:pointer;';
+        if(enc.kind === 'scene') {
+            h += '<div style="padding:8px 10px;background:#14131c;border:1px solid #2c2c3c;border-radius:5px;margin-bottom:6px;">'
+                + '<div style="display:flex;align-items:center;gap:6px;">'
+                + '<span style="flex:1;font-size:0.82em;' + (enc.done ? 'opacity:0.55;' : '') + '">📖 <strong>' + (enc.done ? '✓ ' : '') + _bpEsc(enc.name || 'Interlude') + '</strong> <span style="color:#666;">(interlude — not a fight)</span></span>'
+                + '<button onclick="bpCampaignEncMove(\'' + cidE + '\',\'' + encId + '\',-1)" style="' + step + '" title="Move up">↑</button>'
+                + '<button onclick="bpCampaignEncMove(\'' + cidE + '\',\'' + encId + '\',1)" style="' + step + '" title="Move down">↓</button>'
+                + '<button onclick="bpCampaignEncToggle(\'' + cidE + '\',\'' + encId + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#222;border:1px solid #555;border-radius:4px;color:#ddd;cursor:pointer;">' + (enc.done ? '↺ Reopen' : '✓ Done') + '</button>'
+                + '<button onclick="bpCampaignEncDelete(\'' + cidE + '\',\'' + encId + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
+                + '</div>'
+                + (enc.notes ? '<div style="font-size:0.78em;color:#999;font-style:italic;margin-top:5px;">' + _bpEsc(enc.notes) + '</div>' : '')
+                + '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">'
+                + '<button onclick="bpCampaignEncNotes(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '">📝 Notes</button>'
+                + '<button onclick="bpCampaignEncDuplicate(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '">⧉ Copy</button>'
+                + '</div></div>';
+            return;
+        }
         const n = (enc.entries || []).reduce(function(a, e){ return a + (Math.max(1, parseInt(e.qty, 10) || 1)); }, 0);
         const sum = bpEncSummary(enc);
-        h += '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
+        const diff = bpCampaignDifficulty(camp, enc);
+        const hasVillain = !!(camp.villain && camp.villain.name && (enc.entries || []).some(function(e){ return (e.side || 'narrator') === 'narrator' && bpCampaignEntryName(e) === camp.villain.name; }));
+        h += '<div style="padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
+            + '<div style="display:flex;align-items:center;gap:6px;">'
             + '<span style="flex:1;font-size:0.82em;' + (enc.done ? 'opacity:0.55;' : '') + '"><strong>' + (enc.done ? '✓ ' : '') + _bpEsc(enc.name || 'Encounter') + '</strong> <span style="color:#666;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span>'
-            + (sum ? '<br><span style="font-size:0.85em;color:#777;">' + _bpEsc(sum) + '</span>' : '') + '</span>'
-            + '<button onclick="bpCampaignEncMove(\'' + cid + '\',\'' + enc.id + '\',-1)" style="' + step + '" title="Move up">↑</button>'
-            + '<button onclick="bpCampaignEncMove(\'' + cid + '\',\'' + enc.id + '\',1)" style="' + step + '" title="Move down">↓</button>'
-            + '<button onclick="bpCampaignRunEncounter(\'' + cid + '\',\'' + enc.id + '\')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#1a6600;border:1px solid #44aa44;border-radius:4px;color:#fff;cursor:pointer;">▶ Run</button>'
-            + '<button onclick="bpCampaignEncToggle(\'' + cid + '\',\'' + enc.id + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#222;border:1px solid #555;border-radius:4px;color:#ddd;cursor:pointer;">' + (enc.done ? '↺ Reopen' : '✓ Done') + '</button>'
-            + '<button onclick="bpCampaignEncDelete(\'' + cid + '\',\'' + enc.id + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
-            + '</div>';
+            + (hasVillain ? ' <span style="color:#ffaa77;">👹 villain inside</span>' : '')
+            + (enc.fresh ? ' <span style="color:#88ccff;" title="Fresh start: the party launches at full and no state carries back">↺ fresh</span>' : '')
+            + (sum ? '<br><span style="font-size:0.85em;color:#777;">' + _bpEsc(sum) + '</span>' : '')
+            + (diff ? '<br><span style="font-size:0.85em;color:#999;">' + diff.label + ' — party Team Rank ' + diff.teamRank + ' · enemy ranks total ' + diff.enemySum + ' <span style="color:#666;">(rough gauge, not book math)</span></span>' : '')
+            + '</span>'
+            + '<button onclick="bpCampaignEncMove(\'' + cidE + '\',\'' + encId + '\',-1)" style="' + step + '" title="Move up">↑</button>'
+            + '<button onclick="bpCampaignEncMove(\'' + cidE + '\',\'' + encId + '\',1)" style="' + step + '" title="Move down">↓</button>'
+            + '<button onclick="bpCampaignRunEncounter(\'' + cidE + '\',\'' + encId + '\')" style="width:auto;padding:4px 12px;font-size:0.76em;background:#1a6600;border:1px solid #44aa44;border-radius:4px;color:#fff;cursor:pointer;">▶ Run</button>'
+            + '<button onclick="bpCampaignEncToggle(\'' + cidE + '\',\'' + encId + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#222;border:1px solid #555;border-radius:4px;color:#ddd;cursor:pointer;">' + (enc.done ? '↺ Reopen' : '✓ Done') + '</button>'
+            + '<button onclick="bpCampaignEncDelete(\'' + cidE + '\',\'' + encId + '\')" style="width:auto;padding:4px 10px;font-size:0.76em;background:#3a0a0a;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">✕</button>'
+            + '</div>'
+            + (enc.notes ? '<div style="font-size:0.78em;color:#999;font-style:italic;margin-top:5px;">📝 ' + _bpEsc(enc.notes) + '</div>' : '')
+            + '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">'
+            + '<button onclick="bpCampaignEncNotes(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '">📝 Notes</button>'
+            + '<button onclick="bpCampaignEncDuplicate(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '">⧉ Copy</button>'
+            + '<button onclick="bpCampaignEncFreshToggle(\'' + cidE + '\',\'' + encId + '\')" style="' + act + (enc.fresh ? 'background:#0a2a4a;border-color:#1a6a9a;color:#aad4ff;font-weight:bold;' : '') + '" title="Fresh start: party launches at full Health and Focus, and no state carries back — for flashbacks and one-shots">↺ Fresh start</button>'
+            + '<button onclick="bpCampaignVillainPick(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '" title="Flag this campaign\'s recurring villain from this encounter\'s fighters">👹 Villain…</button>'
+            + '</div></div>';
     });
     h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">'
         + '<button onclick="bpCampaignAddSetup(\'' + cid + '\')" style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;">＋ Add current Fight setup</button>'
         + '<button onclick="bpCampaignImport(\'' + cid + '\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">📥 Import saved battle</button>'
-        + '</div>'
+        + '<button onclick="bpCampaignAddScene(\'' + cid + '\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">📖 Add interlude</button>'
+        + '</div>';
+    // -- Campaign log --
+    const log = Array.isArray(camp.log) ? camp.log : [];
+    h += '<details style="margin-top:14px;"><summary style="font-size:0.78em;color:#888;text-transform:uppercase;letter-spacing:1px;cursor:pointer;">📜 Campaign log (' + log.length + ')</summary>'
+        + '<div style="margin-top:8px;">'
+        + '<button onclick="bpCampaignLogAdd(\'' + cid + '\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;margin-bottom:8px;">＋ Add log entry</button>';
+    if(!log.length) {
+        h += '<div style="font-size:0.82em;color:#666;font-style:italic;">Nothing logged yet. Finished encounters, rests and villain changes land here automatically.</div>';
+    } else {
+        for(let li = log.length - 1; li >= 0; li--) {
+            h += '<div style="display:flex;gap:6px;align-items:baseline;padding:4px 0;border-bottom:1px solid #1c1c1c;">'
+                + '<span style="flex:1;font-size:0.8em;color:#bbb;">' + _bpEsc(log[li]) + '</span>'
+                + '<a href="javascript:void(0)" onclick="bpCampaignLogDelete(\'' + cid + '\',' + li + ')" style="color:#ff9999;text-decoration:none;font-size:0.8em;">✕</a></div>';
+        }
+    }
+    h += '</div></details>'
         + '</div>';
     return h;
 }
