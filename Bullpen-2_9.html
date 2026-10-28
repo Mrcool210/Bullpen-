@@ -3470,6 +3470,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
                    cursor:pointer;margin-top:8px;">🔍 Verify Character</button>
   </div>
 
+  <!-- Music now-playing strip (populated by the music player; hidden when idle) -->
+  <div id="bpMusicStrip" style="display:none;align-items:center;gap:8px;padding:6px 12px;background:#14101f;border-bottom:1px solid #3a2a55;"></div>
+
   <!-- SCREEN CONTAINER -->
   <div id="screenContainer">
 
@@ -4951,7 +4954,9 @@ A <strong>6 M 6</strong> on an initiative check is an ultimate Fantastic success
           <button class="play-subtab-btn" data-play-subtab="team" onclick="playSwitchSubTab('team')" style="flex:1;background:var(--bg-inset);color:var(--text-sub);border:1px solid var(--border-light);font-size:0.88em;font-weight:bold;padding:10px;border-radius:8px;cursor:pointer;min-width:100px;">🦸 Team</button>
           <button class="play-subtab-btn" data-play-subtab="reference" onclick="playSwitchSubTab('reference')" style="flex:1;background:var(--bg-inset);color:var(--text-sub);border:1px solid var(--border-light);font-size:0.88em;font-weight:bold;padding:10px;border-radius:8px;cursor:pointer;min-width:100px;">📚 Reference</button>
           <button class="play-subtab-btn" data-play-subtab="journal" onclick="playSwitchSubTab('journal')" style="flex:1;background:var(--bg-inset);color:var(--text-sub);border:1px solid var(--border-light);font-size:0.88em;font-weight:bold;padding:10px;border-radius:8px;cursor:pointer;min-width:100px;">📓 Journal</button>
+          <button class="play-subtab-btn" data-play-subtab="music" onclick="playSwitchSubTab('music')" style="flex:1;background:var(--bg-inset);color:var(--text-sub);border:1px solid var(--border-light);font-size:0.88em;font-weight:bold;padding:10px;border-radius:8px;cursor:pointer;min-width:100px;">🎵 Music</button>
         </div>
+        <div id="playSubtabMusic" style="display:none;"><div id="bpMusicPanel"></div></div>
         <div id="playSubtabDice"><div id="diceRow" style="display:flex; gap:12px; justify-content:center; margin-bottom:14px; min-height:72px; align-items:center;">
 <span style="color:#444; font-style:italic; font-size:0.85em;">Press Roll to roll the Marvel dice</span>
 </div><div id="diceResultBanner" style="display:none; border-radius:8px; padding:12px 16px; text-align:center;" role="status">
@@ -19695,6 +19700,7 @@ function bpCampaignRunEncounter(campId, encId) {
             if(vc) villainUid = vc.uid;
         }
         window._bpCampaignCtx = { campaignId: camp.id, encounterId: enc.id, uids: uids, villainUid: villainUid, fresh: !!enc.fresh };
+        window._bpMusicBoss = enc.musicTrackId ? { trackId: enc.musicTrackId, encId: enc.id } : null;
         bpSetFightPhase('combat');
     };
     if(typeof bpStatefulFight === 'function' && bpStatefulFight()) {
@@ -20381,6 +20387,7 @@ function bpCampaignPanelHtml(camp) {
             + '<span style="flex:1;font-size:0.82em;' + (enc.done ? 'opacity:0.55;' : '') + '"><strong>' + (enc.done ? '✓ ' : '') + _bpEsc(enc.name || 'Encounter') + '</strong> <span style="color:#666;">(' + n + ' fighter' + (n === 1 ? '' : 's') + ')</span>'
             + (hasVillain ? ' <span style="color:#ffaa77;">👹 villain inside</span>' : '')
             + (enc.fresh ? ' <span style="color:#88ccff;" title="Fresh start: the party launches at full and no state carries back">↺ fresh</span>' : '')
+            + (enc.musicTrackId ? ' <span style="color:#c9a0ff;" title="Boss theme: this track takes over while the encounter is fought">🎵 ' + _bpEsc((window._bpMusicNames && window._bpMusicNames[enc.musicTrackId]) || 'boss theme') + '</span>' : '')
             + (sum ? '<br><span style="font-size:0.85em;color:#777;">' + _bpEsc(sum) + '</span>' : '')
             + (diff ? '<br><span style="font-size:0.85em;color:#999;">' + diff.label + ' — party Team Rank ' + diff.teamRank + ' · enemy ranks total ' + diff.enemySum + ' <span style="color:#666;">(rough gauge, not book math)</span></span>' : '')
             + '</span>'
@@ -20396,6 +20403,7 @@ function bpCampaignPanelHtml(camp) {
             + '<button onclick="bpCampaignEncDuplicate(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '">⧉ Copy</button>'
             + '<button onclick="bpCampaignEncFreshToggle(\'' + cidE + '\',\'' + encId + '\')" style="' + act + (enc.fresh ? 'background:#0a2a4a;border-color:#1a6a9a;color:#aad4ff;font-weight:bold;' : '') + '" title="Fresh start: party launches at full Health and Focus, and no state carries back — for flashbacks and one-shots">↺ Fresh start</button>'
             + '<button onclick="bpCampaignVillainPick(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '" title="Flag this campaign\'s recurring villain from this encounter\'s fighters">👹 Villain…</button>'
+            + '<button onclick="bpCampaignEncMusic(\'' + cidE + '\',\'' + encId + '\')" style="' + act + '" title="Boss theme: pick a track from your music library to take over while this encounter is fought">🎵 Theme…</button>'
             + '</div></div>';
     });
     h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">'
@@ -32187,7 +32195,7 @@ function powersSwitchSubTab(tab) {
 var playActiveSubTab = 'dice';
 function playSwitchSubTab(tab) {
   playActiveSubTab = tab;
-  var names = ['dice','team','reference','journal'];
+  var names = ['dice','team','reference','journal','music'];
   names.forEach(function(t) {
     var pane = document.getElementById('playSubtab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (pane) pane.style.display = (t === tab) ? 'block' : 'none';
@@ -35789,7 +35797,8 @@ window.bpVaultPickChoose = function(heroIndex) {
             title: 'Tools for the table',
             lines: [
                 '<strong>🎲 Dice</strong> rolls the d616 for any hero — pick a stat and it adds the right score.',
-                '<strong>🦸 Team</strong> covers advancement and the whole party at a glance; <strong>📚 Reference</strong> is the quick rules lookup; <strong>📓 Journal</strong> keeps your session notes, dated and stored on this device.'
+                '<strong>🦸 Team</strong> covers advancement and the whole party at a glance; <strong>📚 Reference</strong> is the quick rules lookup; <strong>📓 Journal</strong> keeps your session notes, dated and stored on this device.',
+                '<strong>🎵 Music</strong> plays your own uploaded tracks — menu music, campaign ambiance, combat playlists, and boss themes for campaign encounters.'
             ]
         },
         custom: {
@@ -36633,6 +36642,503 @@ window.addEventListener('load', function() {
   } else {
     init();
   }
+})();
+</script>
+
+<script>
+/* ============================================================
+   bpPromptText — text-entry modal used by the campaign log,
+   interludes, and music rename. (The campaign expansion shipped
+   calling this helper before it existed; it is defined here, and
+   click-time calls resolve it fine since declarations at top
+   level are global once this block has run.)
+   ============================================================ */
+function bpPromptText(title, label, cb, initial) {
+    _showPickerModal(title,
+        '<div style="font-size:0.85em;color:#bbb;">' + _bpEsc(label) + '</div>'
+        + '<input id="bpPromptTextInput" type="text" value="' + _bpEsc(initial || '') + '" style="padding:9px 10px;font-size:0.9em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
+        + '<button onclick="bpPromptTextDone()" style="padding:11px;font-size:0.9em;font-weight:bold;background:#1a4a00;border:1px solid #44aa22;border-radius:6px;color:#aaffaa;cursor:pointer;">✓ OK</button>');
+    window._bpPromptTextCb = cb;
+    setTimeout(function() { var el = document.getElementById('bpPromptTextInput'); if (el) { el.focus(); try { el.select(); } catch(e) {} } }, 60);
+}
+function bpPromptTextDone() {
+    var el = document.getElementById('bpPromptTextInput');
+    var v = el ? el.value.trim() : '';
+    var cb = window._bpPromptTextCb;
+    window._bpPromptTextCb = null;
+    _closePickerModal();
+    if (v && typeof cb === 'function') cb(v);
+}
+
+/* ============================================================
+   MUSIC PLAYER — uploaded tracks (IndexedDB), zone playlists
+   (menu / campaign ambiance / combat), per-encounter boss
+   themes. Files live in a dedicated database (bullpen_music_db)
+   as blobs; settings/playlists live in localStorage. Autoplay
+   only ever follows a user pressing Play once (browser rule),
+   and pausing is never overridden by the zone watcher.
+   ============================================================ */
+var BP_MUSIC_SETTINGS_KEY = 'bullpen_music_settings_v1';
+function bpMusicLoadSettings() {
+    var d = { volume: 0.8, shuffle: false, loop: true, zones: { menu: [], ambiance: [], combat: [] } };
+    try {
+        var raw = localStorage.getItem(BP_MUSIC_SETTINGS_KEY);
+        if (raw) { var s = JSON.parse(raw); if (s && typeof s === 'object') { d.volume = (typeof s.volume === 'number') ? s.volume : d.volume; d.shuffle = !!s.shuffle; d.loop = s.loop !== false; if (s.zones) ['menu','ambiance','combat'].forEach(function(z){ if (Array.isArray(s.zones[z])) d.zones[z] = s.zones[z].slice(); }); } }
+    } catch(e) {}
+    return d;
+}
+function bpMusicSaveSettings() {
+    try { localStorage.setItem(BP_MUSIC_SETTINGS_KEY, JSON.stringify(window._bpMusic.settings)); } catch(e) {}
+}
+window._bpMusic = { ready: false, meta: [], settings: bpMusicLoadSettings(), zone: null, queue: [], idx: -1, trackId: null, playing: false, unlocked: false, userStopped: false, _audio: null, _objUrl: null, _fadeTimer: null, _errStreak: 0 };
+window._bpMusicNames = {};
+window._bpMusicBoss = null;
+
+/* ---------- IndexedDB (dedicated database) ---------- */
+function bpMusicDb() {
+    return new Promise(function(res, rej) {
+        var rq;
+        try { rq = indexedDB.open('bullpen_music_db', 1); } catch(e) { rej(e); return; }
+        rq.onupgradeneeded = function() {
+            var db = rq.result;
+            if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('data')) db.createObjectStore('data', { keyPath: 'id' });
+        };
+        rq.onsuccess = function() { res(rq.result); };
+        rq.onerror = function() { rej(rq.error); };
+    });
+}
+function bpIdbOp(store, mode, makeReq) {
+    return bpMusicDb().then(function(db) {
+        return new Promise(function(res, rej) {
+            var tx = db.transaction(store, mode);
+            var rq = makeReq(tx.objectStore(store));
+            rq.onsuccess = function() { res(rq.result); };
+            rq.onerror = function() { rej(rq.error); };
+        });
+    });
+}
+function bpIdbGetAll(store) { return bpIdbOp(store, 'readonly', function(s){ return s.getAll(); }); }
+function bpIdbGet(store, key) { return bpIdbOp(store, 'readonly', function(s){ return s.get(key); }); }
+function bpIdbPut(store, val) { return bpIdbOp(store, 'readwrite', function(s){ return s.put(val); }); }
+function bpIdbDelete(store, key) { return bpIdbOp(store, 'readwrite', function(s){ return s.delete(key); }); }
+
+/* ---------- Pure zone + queue logic ---------- */
+// What should be playing, by context. Boss theme (a campaign encounter
+// with a flagged track, while it is being fought) beats the combat
+// playlist, which beats campaign ambiance (campaign panel open on the
+// Fight entry screen), which beats menu music everywhere else.
+function bpMusicResolveZone(s) {
+    if (s.bossActive && s.bossTrackId) return 'boss';
+    if (s.inCombat) return 'combat';
+    if (s.campaignPanel) return 'ambiance';
+    return 'menu';
+}
+function bpMusicNextIndex(len, idx, shuffle, loop) {
+    if (len <= 0) return -1;
+    if (len === 1) return loop ? 0 : -1;
+    if (shuffle) { var n = idx; while (n === idx) n = Math.floor(Math.random() * len); return n; }
+    if (idx + 1 < len) return idx + 1;
+    return loop ? 0 : -1;
+}
+function bpMusicZoneLabel(zone) {
+    return zone === 'boss' ? '👹 Boss theme' : zone === 'combat' ? '⚔ Combat' : zone === 'ambiance' ? '🌿 Ambiance' : '🎵 Menu';
+}
+function bpMusicDesired() {
+    var inCombat = false, campPanel = false;
+    try { inCombat = (typeof fightUiPhase !== 'undefined' && fightUiPhase === 'combat'); } catch(e) {}
+    try {
+        var sc = document.querySelector('.app-screen.screen-active');
+        var onFight = sc && sc.getAttribute('data-screen') === 'combat';
+        campPanel = !!(onFight && !inCombat && window._bpOpenCampaignId);
+    } catch(e) {}
+    var bossActive = false, bossTrackId = null;
+    try {
+        var ctx = window._bpCampaignCtx, b = window._bpMusicBoss;
+        if (ctx && b && b.encId === ctx.encounterId && inCombat) { bossActive = true; bossTrackId = b.trackId; }
+    } catch(e) {}
+    return bpMusicResolveZone({ bossActive: bossActive, bossTrackId: bossTrackId, inCombat: inCombat, campaignPanel: campPanel });
+}
+function bpMusicQueueFor(zone) {
+    var st = window._bpMusic; if (!st) return [];
+    if (zone === 'boss') { var b = window._bpMusicBoss; return (b && b.trackId) ? [b.trackId] : []; }
+    var have = {};
+    st.meta.forEach(function(m){ have[m.id] = true; });
+    var ids = (st.settings.zones && st.settings.zones[zone]) || [];
+    return ids.filter(function(id){ return !!have[id]; });
+}
+
+/* ---------- Playback ---------- */
+function bpMusicAudio() {
+    var st = window._bpMusic;
+    if (!st._audio) {
+        var a = new Audio();
+        a.preload = 'auto';
+        a.addEventListener('ended', function() { st._errStreak = 0; bpMusicAdvance(true); });
+        a.addEventListener('error', function() {
+            st._errStreak++;
+            if (st._errStreak > st.queue.length) { st.playing = false; bpMusicRenderAll(); return; }
+            bpMusicAdvance(true);
+        });
+        a.addEventListener('timeupdate', function() { bpMusicTimeTick(); });
+        st._audio = a;
+    }
+    return st._audio;
+}
+function bpMusicFadeTo(target, ms, cb) {
+    var st = window._bpMusic, a = st._audio;
+    if (!a) { if (cb) cb(); return; }
+    if (st._fadeTimer) { clearInterval(st._fadeTimer); st._fadeTimer = null; }
+    if (!ms) { a.volume = target; if (cb) cb(); return; }
+    var from = a.volume, steps = Math.max(1, Math.round(ms / 50)), step = (target - from) / steps, n = 0;
+    st._fadeTimer = setInterval(function() {
+        n++;
+        a.volume = Math.max(0, Math.min(1, from + step * n));
+        if (n >= steps) { clearInterval(st._fadeTimer); st._fadeTimer = null; if (cb) cb(); }
+    }, 50);
+}
+function bpMusicPlayIndex(i, fade) {
+    var st = window._bpMusic;
+    if (!st || i < 0 || i >= st.queue.length) return;
+    st.idx = i;
+    st.trackId = st.queue[i];
+    bpIdbGet('data', st.trackId).then(function(rec) {
+        if (!rec || !rec.blob) { bpMusicAdvance(true); return; }
+        if (st._objUrl) { try { URL.revokeObjectURL(st._objUrl); } catch(e) {} }
+        st._objUrl = URL.createObjectURL(rec.blob);
+        var a = bpMusicAudio();
+        var start = function() {
+            a.src = st._objUrl;
+            a.loop = (st.zone === 'boss');
+            var p = a.play(); if (p && p.catch) p.catch(function(){});
+            st.playing = true;
+            bpMusicFadeTo(st.settings.volume, fade ? 700 : 0);
+            bpMusicRenderAll();
+        };
+        if (fade && st.playing) bpMusicFadeTo(0, 450, start); else start();
+    }).catch(function() { bpMusicAdvance(true); });
+}
+function bpMusicAdvance(auto) {
+    var st = window._bpMusic;
+    if (!st || !st.queue.length) return;
+    var nxt = bpMusicNextIndex(st.queue.length, st.idx, st.settings.shuffle, st.settings.loop);
+    if (nxt < 0) {
+        st.playing = false;
+        if (st._audio) st._audio.pause();
+        bpMusicRenderAll();
+        return;
+    }
+    bpMusicPlayIndex(nxt, true);
+}
+function bpMusicNextManual() {
+    var st = window._bpMusic;
+    if (!st || !st.queue.length) return;
+    st.unlocked = true; st.userStopped = false;
+    var nxt = st.settings.shuffle ? bpMusicNextIndex(st.queue.length, st.idx, true, true) : (st.idx + 1) % st.queue.length;
+    bpMusicPlayIndex(nxt, true);
+}
+function bpMusicPrevManual() {
+    var st = window._bpMusic;
+    if (!st || !st.queue.length) return;
+    st.unlocked = true; st.userStopped = false;
+    bpMusicPlayIndex((st.idx - 1 + st.queue.length) % st.queue.length, true);
+}
+function bpMusicToggle() {
+    var st = window._bpMusic;
+    if (!st || !st.ready) return;
+    var a = bpMusicAudio();
+    if (st.playing) {
+        st.userStopped = true;
+        st.playing = false;
+        a.pause();
+        bpMusicRenderAll();
+        return;
+    }
+    st.unlocked = true;
+    st.userStopped = false;
+    if (st.trackId && a.src && st.queue.length) {
+        var p = a.play(); if (p && p.catch) p.catch(function(){});
+        st.playing = true;
+        bpMusicRenderAll();
+        return;
+    }
+    var zone = bpMusicDesired();
+    st.zone = zone;
+    st.queue = bpMusicQueueFor(zone);
+    if (st.queue.length) bpMusicPlayIndex(0, false);
+    else if (typeof showNotice === 'function') showNotice('Nothing in the ' + bpMusicZoneLabel(zone) + ' playlist yet — add tracks in Play Tools → 🎵 Music.');
+    bpMusicRenderAll();
+}
+function bpMusicPlayNow(trackId) {
+    var st = window._bpMusic;
+    if (!st || !st.ready) return;
+    st.unlocked = true;
+    st.userStopped = false;
+    var zone = bpMusicDesired();
+    var q = bpMusicQueueFor(zone);
+    if (q.indexOf(trackId) !== -1) { st.zone = zone; st.queue = q; bpMusicPlayIndex(q.indexOf(trackId), false); }
+    else { st.zone = zone; st.queue = [trackId]; bpMusicPlayIndex(0, false); }
+    bpMusicRenderAll();
+}
+// Zone watcher: only ever acts after the user has started playback once
+// this session, and never overrides an explicit pause.
+function bpMusicReconcile() {
+    var st = window._bpMusic;
+    if (!st || !st.ready) return;
+    bpMusicRenderStrip();
+    if (!st.unlocked || st.userStopped) return;
+    var zone = bpMusicDesired();
+    var queue = bpMusicQueueFor(zone);
+    if (!queue.length) {
+        if (st.playing && st._audio) st._audio.pause();
+        st.playing = false;
+        st.zone = zone;
+        st.queue = [];
+        bpMusicRenderPanel();
+        return;
+    }
+    var same = (st.zone === zone && st.queue.join('|') === queue.join('|'));
+    if (!same) {
+        st.zone = zone;
+        st.queue = queue;
+        bpMusicPlayIndex(0, true);
+    }
+}
+
+/* ---------- Library ---------- */
+function bpMusicUpload(input) {
+    var st = window._bpMusic;
+    var files = Array.prototype.slice.call((input && input.files) || []);
+    if (!files.length) return;
+    var done = 0, added = 0;
+    files.forEach(function(f, fi) {
+        var id = 'm' + Date.now().toString(36) + fi;
+        var name = (f.name || 'Track').replace(/\.[A-Za-z0-9]+$/, '');
+        var meta = { id: id, name: name, size: f.size || 0, type: f.type || '', addedAt: Date.now() + fi };
+        bpIdbPut('data', { id: id, blob: f }).then(function() {
+            return bpIdbPut('meta', meta);
+        }).then(function() {
+            st.meta.push(meta);
+            window._bpMusicNames[id] = name;
+            added++;
+        }).catch(function() {}).then(function() {
+            done++;
+            if (done === files.length) {
+                st.meta.sort(function(a, b){ return a.addedAt - b.addedAt; });
+                bpMusicRenderAll();
+                if (typeof showNotice === 'function') showNotice(added ? ('Added ' + added + ' track' + (added === 1 ? '' : 's') + ' to your music library.') : 'Those files could not be stored — the library was not changed.');
+            }
+        });
+    });
+    try { input.value = ''; } catch(e) {}
+}
+function bpMusicRename(id) {
+    var st = window._bpMusic;
+    var m = st.meta.find(function(x){ return x.id === id; });
+    if (!m) return;
+    bpPromptText('🎵 Rename track', 'Track name:', function(name) {
+        m.name = name;
+        window._bpMusicNames[id] = name;
+        bpIdbPut('meta', m).catch(function(){});
+        bpMusicRenderAll();
+    }, m.name);
+}
+function bpMusicDelete(id) {
+    var st = window._bpMusic;
+    var m = st.meta.find(function(x){ return x.id === id; });
+    if (!m) return;
+    showConfirm('Delete "' + m.name + '" from your music library? It is removed from every playlist. This cannot be undone.', function() {
+        bpIdbDelete('data', id).catch(function(){}).then(function() { return bpIdbDelete('meta', id).catch(function(){}); }).then(function() {
+            st.meta = st.meta.filter(function(x){ return x.id !== id; });
+            delete window._bpMusicNames[id];
+            ['menu','ambiance','combat'].forEach(function(z) {
+                st.settings.zones[z] = st.settings.zones[z].filter(function(x){ return x !== id; });
+            });
+            bpMusicSaveSettings();
+            if (st.trackId === id) { st.trackId = null; st.playing = false; if (st._audio) st._audio.pause(); st.queue = []; }
+            bpMusicRenderAll();
+        });
+    }, null, 'Delete track?', '🎵');
+}
+function bpMusicZoneToggle(zone, id) {
+    var st = window._bpMusic;
+    var list = st.settings.zones[zone];
+    var i = list.indexOf(id);
+    if (i >= 0) list.splice(i, 1); else list.push(id);
+    bpMusicSaveSettings();
+    bpMusicRenderAll();
+}
+function bpMusicSetVolume(v) {
+    var st = window._bpMusic;
+    st.settings.volume = Math.max(0, Math.min(1, parseFloat(v) || 0));
+    bpMusicSaveSettings();
+    if (st._audio && !st._fadeTimer) st._audio.volume = st.settings.volume;
+    var lbl = document.getElementById('bpMusicVolLabel');
+    if (lbl) lbl.textContent = Math.round(st.settings.volume * 100) + '%';
+}
+function bpMusicToggleShuffle() {
+    var st = window._bpMusic;
+    st.settings.shuffle = !st.settings.shuffle;
+    bpMusicSaveSettings();
+    bpMusicRenderAll();
+}
+function bpMusicToggleLoop() {
+    var st = window._bpMusic;
+    st.settings.loop = !st.settings.loop;
+    bpMusicSaveSettings();
+    bpMusicRenderAll();
+}
+function bpMusicSeek(v) {
+    var st = window._bpMusic, a = st._audio;
+    if (!a || !a.duration) return;
+    a.currentTime = (parseFloat(v) / 1000) * a.duration;
+}
+function bpMusicTimeText(sec) {
+    if (!isFinite(sec) || sec == null) return '0:00';
+    sec = Math.max(0, Math.floor(sec));
+    return Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
+}
+function bpMusicTimeTick() {
+    var st = window._bpMusic, a = st._audio;
+    if (!a) return;
+    var t = document.getElementById('bpMusicTime');
+    if (t) t.textContent = bpMusicTimeText(a.currentTime) + ' / ' + bpMusicTimeText(a.duration);
+    var seek = document.getElementById('bpMusicSeek');
+    if (seek && document.activeElement !== seek && a.duration) seek.value = Math.round((a.currentTime / a.duration) * 1000);
+}
+
+/* ---------- Rendering ---------- */
+function bpMusicRenderAll() { bpMusicRenderStrip(); bpMusicRenderPanel(); }
+function bpMusicRenderStrip() {
+    var el = document.getElementById('bpMusicStrip');
+    if (!el) return;
+    var st = window._bpMusic;
+    if (!st || !st.trackId) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    var name = window._bpMusicNames[st.trackId] || 'Track';
+    el.style.display = 'flex';
+    el.innerHTML = '<span style="font-size:0.8em;color:#c9a0ff;white-space:nowrap;">' + bpMusicZoneLabel(st.zone || 'menu') + '</span>'
+        + '<span style="flex:1;font-size:0.85em;color:#eee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _bpEsc(name) + '</span>'
+        + '<button type="button" onclick="bpMusicToggle()" style="width:auto;padding:5px 12px;font-size:0.85em;background:#2a1a44;border:1px solid #6a4a9a;border-radius:6px;color:#e6d5ff;cursor:pointer;">' + (st.playing ? '⏸ Pause' : '▶ Play') + '</button>'
+        + '<button type="button" onclick="bpMusicNextManual()" style="width:auto;padding:5px 10px;font-size:0.85em;background:#222;border:1px solid #555;border-radius:6px;color:#ddd;cursor:pointer;">⏭</button>';
+}
+function bpMusicRenderPanel() {
+    var panel = document.getElementById('bpMusicPanel');
+    if (!panel) return;
+    var st = window._bpMusic;
+    var btn = 'width:auto;padding:6px 12px;font-size:0.8em;border-radius:5px;cursor:pointer;';
+    var ctl = 'width:44px;height:40px;font-size:1em;background:#222;border:1px solid #555;border-radius:8px;color:#eee;cursor:pointer;';
+    var h = '<div style="background:#101418;border:1px solid #2a2a2a;border-radius:8px;padding:14px;">'
+        + '<div style="font-size:1.05em;font-weight:bold;letter-spacing:1px;margin-bottom:4px;">🎵 Music</div>'
+        + '<div style="font-size:0.8em;color:#888;margin-bottom:12px;line-height:1.5;">Upload your own music and it plays in the app: menu music while you build, ambiance in a campaign, a combat playlist during fights — and boss themes you flag on campaign encounters. Files are stored on this device only, in the app\'s music library. Playback starts after you press Play once; after that, zones switch on their own.</div>';
+    if (!st.ready) {
+        panel.innerHTML = h + '<div style="font-size:0.85em;color:#999;">Loading your library…</div></div>';
+        return;
+    }
+    /* Now playing + transport */
+    var curName = st.trackId ? (window._bpMusicNames[st.trackId] || 'Track') : null;
+    h += '<div style="padding:10px;background:#16121f;border:1px solid #3a2a55;border-radius:6px;margin-bottom:12px;">'
+        + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+        + '<span style="font-size:0.78em;color:#c9a0ff;">' + (st.zone ? bpMusicZoneLabel(st.zone) : '🎵 Music') + '</span>'
+        + '<span style="flex:1;font-size:0.92em;font-weight:bold;min-width:140px;">' + (curName ? _bpEsc(curName) : 'Nothing playing') + '</span>'
+        + '<span id="bpMusicTime" style="font-size:0.8em;color:#999;">0:00 / 0:00</span></div>'
+        + '<input id="bpMusicSeek" type="range" min="0" max="1000" value="0" oninput="bpMusicSeek(this.value)" style="width:100%;margin:10px 0 4px;">'
+        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">'
+        + '<button type="button" onclick="bpMusicPrevManual()" style="' + ctl + '">⏮</button>'
+        + '<button type="button" onclick="bpMusicToggle()" style="' + ctl + 'width:60px;background:#2a1a44;border-color:#6a4a9a;">' + (st.playing ? '⏸' : '▶') + '</button>'
+        + '<button type="button" onclick="bpMusicNextManual()" style="' + ctl + '">⏭</button>'
+        + '<span style="font-size:0.8em;color:#999;margin-left:8px;">Volume</span>'
+        + '<input type="range" min="0" max="1" step="0.05" value="' + st.settings.volume + '" oninput="bpMusicSetVolume(this.value)" style="flex:1;min-width:90px;">'
+        + '<span id="bpMusicVolLabel" style="font-size:0.8em;color:#999;min-width:38px;">' + Math.round(st.settings.volume * 100) + '%</span>'
+        + '<button type="button" onclick="bpMusicToggleShuffle()" style="' + btn + (st.settings.shuffle ? 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;font-weight:bold;' : 'background:#222;border:1px solid #444;color:#ccc;') + '">🔀 Shuffle ' + (st.settings.shuffle ? 'on' : 'off') + '</button>'
+        + '<button type="button" onclick="bpMusicToggleLoop()" style="' + btn + (st.settings.loop ? 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;font-weight:bold;' : 'background:#222;border:1px solid #444;color:#ccc;') + '">🔁 Loop ' + (st.settings.loop ? 'on' : 'off') + '</button>'
+        + '</div>'
+        + '<div style="font-size:0.76em;color:#777;margin-top:8px;">Zones right now: the desired playlist is <strong style="color:#bbb;">' + bpMusicZoneLabel(bpMusicDesired()) + '</strong>. A boss theme, when its encounter is being fought, beats the combat playlist; the combat playlist beats campaign ambiance (campaign open on the Fight screen); ambiance beats menu music.</div>'
+        + '</div>';
+    /* Zone overview */
+    var zoneNames = [['menu','🎵 Menu'], ['ambiance','🌿 Campaign ambiance'], ['combat','⚔ Combat']];
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' + zoneNames.map(function(zn) {
+        var q = bpMusicQueueFor(zn[0]);
+        return '<div style="flex:1;min-width:140px;padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:6px;">'
+            + '<div style="font-size:0.82em;font-weight:bold;">' + zn[1] + '</div>'
+            + '<div style="font-size:0.78em;color:#888;">' + q.length + ' track' + (q.length === 1 ? '' : 's') + '</div></div>';
+    }).join('') + '</div>';
+    /* Upload */
+    h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">'
+        + '<label style="' + btn + 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;display:inline-block;">⬆ Upload music'
+        + '<input type="file" accept="audio/*" multiple onchange="bpMusicUpload(this)" style="display:none;"></label>'
+        + '<span style="font-size:0.78em;color:#777;">MP3 and M4A are the safest formats on Android. A track only exists on this device.</span></div>';
+    /* Library */
+    if (!st.meta.length) {
+        h += '<div style="font-size:0.85em;color:#666;font-style:italic;">No tracks yet. Upload a few songs and assign them to zones below.</div>';
+    } else {
+        h += st.meta.map(function(m) {
+            var chip = function(z, label) {
+                var on = st.settings.zones[z].indexOf(m.id) !== -1;
+                return '<button type="button" onclick="bpMusicZoneToggle(\'' + z + '\',\'' + m.id + '\')" style="width:auto;padding:4px 9px;font-size:0.74em;border-radius:10px;cursor:pointer;' + (on ? 'background:#0a3a5a;border:1px solid #1a6a9a;color:#aad4ff;font-weight:bold;' : 'background:#1c1c1c;border:1px solid #3a3a3a;color:#999;') + '">' + label + '</button>';
+            };
+            return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:#161616;border:1px solid #2c2c2c;border-radius:5px;margin-bottom:6px;">'
+                + '<button type="button" onclick="bpMusicPlayNow(\'' + m.id + '\')" style="' + ctl + 'width:38px;height:34px;font-size:0.9em;" title="Play now">▶</button>'
+                + '<span style="flex:1;font-size:0.85em;min-width:130px;">' + _bpEsc(m.name) + ' <span style="color:#666;font-size:0.85em;">(' + (m.size ? (m.size / 1048576).toFixed(1) + ' MB' : '?') + ')</span>' + (st.trackId === m.id ? ' <span style="color:#c9a0ff;">· now playing</span>' : '') + '</span>'
+                + chip('menu', '🎵 Menu') + chip('ambiance', '🌿 Ambiance') + chip('combat', '⚔ Combat')
+                + '<button type="button" onclick="bpMusicRename(\'' + m.id + '\')" style="' + btn + 'background:#222;border:1px solid #444;color:#ccc;">✎</button>'
+                + '<button type="button" onclick="bpMusicDelete(\'' + m.id + '\')" style="' + btn + 'background:#3a0a0a;border:1px solid #6a1a1a;color:#ff9999;">🗑</button>'
+                + '</div>';
+        }).join('');
+    }
+    h += '</div>';
+    panel.innerHTML = h;
+    bpMusicTimeTick();
+}
+
+/* ---------- Campaign encounter boss themes ---------- */
+function bpCampaignEncMusic(campId, encId) {
+    var camp = (typeof bpCampaignById === 'function') ? bpCampaignById(campId) : null;
+    if (!camp) return;
+    var enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if (!enc) return;
+    var st = window._bpMusic;
+    if (!st.ready || !st.meta.length) {
+        if (typeof showNotice === 'function') showNotice('No music in your library yet — upload tracks in Play Tools → 🎵 Music first.');
+        return;
+    }
+    var rows = st.meta.map(function(m) {
+        var on = enc.musicTrackId === m.id;
+        return '<button onclick="bpCampaignEncMusicSet(\'' + campId + '\',\'' + encId + '\',\'' + m.id + '\')" style="text-align:left;padding:9px 10px;font-size:0.85em;background:#161616;border:1px solid ' + (on ? '#6a4a9a' : '#2c2c2c') + ';border-radius:5px;color:#ddd;cursor:pointer;">🎵 ' + _bpEsc(m.name) + (on ? ' <span style="color:#c9a0ff;">(current theme)</span>' : '') + '</button>';
+    }).join('');
+    _showPickerModal('🎵 Boss theme — ' + _bpEsc(enc.name || 'Encounter'),
+        '<div style="font-size:0.82em;color:#999;">While this encounter is being fought, its theme takes over from the combat playlist and loops. It is still your music — press pause any time and it stays paused.</div>'
+        + '<div style="display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;">' + rows + '</div>'
+        + '<button onclick="bpCampaignEncMusicSet(\'' + campId + '\',\'' + encId + '\',null)" style="padding:10px;font-size:0.85em;background:#222;border:1px solid #444;border-radius:6px;color:#ccc;cursor:pointer;">No boss theme</button>');
+}
+function bpCampaignEncMusicSet(campId, encId, trackId) {
+    var camp = (typeof bpCampaignById === 'function') ? bpCampaignById(campId) : null;
+    if (!camp) return;
+    var enc = camp.encounters.find(function(e){ return e.id === encId; });
+    if (!enc) return;
+    if (trackId) enc.musicTrackId = trackId; else delete enc.musicTrackId;
+    camp.updatedAt = Date.now();
+    bpSaveCampaign(camp);
+    _closePickerModal();
+    bpRenderFightEntry();
+}
+
+/* ---------- Init ---------- */
+(function() {
+    function init() {
+        bpIdbGetAll('meta').then(function(rows) {
+            var st = window._bpMusic;
+            st.meta = (rows || []).slice().sort(function(a, b){ return (a.addedAt || 0) - (b.addedAt || 0); });
+            st.meta.forEach(function(m){ window._bpMusicNames[m.id] = m.name; });
+            st.ready = true;
+            bpMusicRenderAll();
+        }).catch(function() {
+            window._bpMusic.ready = true;
+            bpMusicRenderAll();
+        });
+        setInterval(bpMusicReconcile, 1500);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
 })();
 </script>
 
