@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-18T22:05:00.000Z",
+  "updatedAt": "2026-11-07T18:02:02.261Z",
   "characters": [
     {
       "id": "echo-mara-voss",
@@ -16,6 +16,25 @@
       ],
       "submittedAt": "2026-09-29T14:18:25.250Z",
       "file": "chars/echo-mara-voss.json"
+    },
+    {
+      "id": "infernus-mw6pnd05",
+      "name": "Infernus",
+      "author": "anonymous",
+      "rank": 2,
+      "tagline": "A new hero for the vault.",
+      "description": "No description provided.",
+      "powers": [
+        "Discipline 2",
+        "Mighty 2",
+        "Sturdy 2",
+        "Elemental Burst",
+        "Elemental Blast",
+        "Elemental Infusion"
+      ],
+      "submittedAt": "2026-11-07T18:02:02.261Z",
+      "sourceIssue": 9,
+      "file": "chars/infernus-mw6pnd05.json"
     },
     {
       "id": "moon-knight-mv7sehja",
