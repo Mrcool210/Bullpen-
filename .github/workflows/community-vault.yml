@@ -2,7 +2,7 @@
 name: Community Vault intake
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
 concurrency:
   group: community-vault
   cancel-in-progress: false
