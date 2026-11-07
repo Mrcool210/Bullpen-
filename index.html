@@ -1795,6 +1795,14 @@ html, body {
 #topBarExportBtn:active {
     opacity: 0.8 !important;
 }
+/* Preview PDF button — gold outline, sits beside the red PDF button */
+#topBarPreviewBtn {
+    border-color: var(--accent-gold) !important;
+    color: var(--accent-gold) !important;
+}
+#topBarPreviewBtn:active {
+    opacity: 0.8 !important;
+}
 /* Vault button — subtle */
 #topBarVaultBtn {
     background: var(--bg-card) !important;
@@ -3442,6 +3450,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       </button>
       <button id="topBarExportBtn" onclick="openExportModal()" title="Export PDF Sheet">
         🖨 <span>PDF</span>
+      </button>
+      <button id="topBarPreviewBtn" onclick="openPdfPreview(_exportLayout)" title="Preview PDF Sheet">
+        👁 <span>Preview</span>
       </button>
     </div>
     <div style="display:flex;flex-direction:column;min-width:0;width:100%;text-align:center;">
@@ -34288,7 +34299,7 @@ document.addEventListener('toggle', function(e) {
 (function() {
     var THRESHOLD = 8; // px
     var _startX = 0, _startY = 0, _scrolling = false, _lastMoveTime = 0;
-    var GUARDED = '.home-section-card, .app-tab, #topBarVaultBtn, #topBarExportBtn, .bpqa-item';
+    var GUARDED = '.home-section-card, .app-tab, #topBarVaultBtn, #topBarExportBtn, #topBarPreviewBtn, .bpqa-item';
 
     document.addEventListener('touchstart', function(e) {
         var t = e.touches[0];
