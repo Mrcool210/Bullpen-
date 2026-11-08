@@ -8326,8 +8326,8 @@ async function cvViewDetail(i) {
     var st = h.stats || {};
     var statNames = [['melee', 'Melee'], ['agility', 'Agility'], ['resilience', 'Resilience'], ['vigilance', 'Vigilance'], ['ego', 'Ego'], ['logic', 'Logic']];
     var statCells = statNames.map(function (p) {
-        return '<div style="text-align:center;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 4px;">' +
-            '<div style="font-size:0.62em;color:var(--text-label);text-transform:uppercase;letter-spacing:1px;">' + p[1] + '</div>' +
+        return '<div style="text-align:center;min-width:0;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 4px;">' +
+            '<div style="font-size:0.62em;color:var(--text-label);text-transform:uppercase;letter-spacing:0.5px;">' + p[1] + '</div>' +
             '<div style="font-size:1.05em;font-weight:bold;color:var(--accent-gold);">' + cvEsc(st[p[0]]) + '</div></div>';
     }).join('');
     function listBlock(label, arr, color) {
@@ -8343,7 +8343,7 @@ async function cvViewDetail(i) {
         '</div>' +
         (entry.tagline ? '<div style="font-size:0.8em;color:var(--text-sub);font-style:italic;margin-bottom:8px;">' + cvEsc(entry.tagline) + '</div>' : '') +
         (entry.description ? '<div style="font-size:0.8em;color:var(--text-sub);line-height:1.6;margin-bottom:8px;">' + cvEsc(entry.description) + '</div>' : '') +
-        '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:4px;">' + statCells + '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;margin-bottom:4px;">' + statCells + '</div>' +
         listBlock('&#x26A1; Powers', h.powers, 'var(--accent2)') +
         listBlock('&#x2B50; Traits', h.traits, 'var(--text-main)') +
         listBlock('&#x1F3F7;&#xFE0F; Tags', h.tags, 'var(--text-main)') +
@@ -26833,6 +26833,11 @@ function ctagRenderVault() {
       border:1px solid var(--border-light);border-radius:8px;cursor:pointer;">
       ↗ Open in New Tab
     </button>
+    <button onclick="pdfPreviewDownload()" style="min-height:44px;padding:10px 20px;
+      font-size:0.82em;font-weight:bold;background:var(--primary);color:#fff;
+      border:none;border-radius:8px;cursor:pointer;">
+      ⬇ Save PDF
+    </button>
   </div>
 
 </div>
@@ -32630,6 +32635,8 @@ if(document.readyState === 'loading') {
 (function(){
 
     var _previewBlobUrl = null;   // current blob URL (revoked on close)
+    var _previewBlob    = null;   // the built PDF itself — Save PDF downloads THIS, never a rebuild
+    var _previewFilename = 'character_sheet.pdf';
     var _previewLayout  = 'standard';
 
     // ── Open preview ─────────────────────────────────────────────────────────
@@ -32647,6 +32654,8 @@ if(document.readyState === 'loading') {
 
         // Reset state
         if (_previewBlobUrl) { URL.revokeObjectURL(_previewBlobUrl); _previewBlobUrl = null; }
+        _previewBlob = null;
+        _previewFilename = 'character_sheet.pdf';
         loading.style.display  = 'flex';
         frame.style.display    = 'none';
         fallback.style.display = 'none';
@@ -32659,6 +32668,12 @@ if(document.readyState === 'loading') {
         const layoutLabels = { standard:'Standard', showcase:'Showcase', dossier:'Dossier' };
         if (label) label.textContent = heroName + ' — ' + (layoutLabels[_previewLayout] || _previewLayout) + ' layout';
 
+        // Filename for Save PDF, captured NOW while the previewed hero is the
+        // loaded one (a vault preview temp-loads its hero and restores the
+        // user's own hero as soon as this function returns).
+        const _safeName = String(heroName).replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+        _previewFilename = (_safeName || 'character') + (_previewLayout === 'dossier' ? '_dossier.pdf' : '_sheet.pdf');
+
         // Build the PDF
         try {
             const JsPDF = await loadJsPDF();
@@ -32668,10 +32683,22 @@ if(document.readyState === 'loading') {
             const doc = await buildPdfDoc(_previewLayout, JsPDF);
             if (!doc) throw new Error('PDF generation returned nothing.');
 
-            // Get as blob
+            // Get as blob — kept for Save PDF / Open Tab so both always serve
+            // the exact PDF that was previewed, even after a temp-loaded
+            // vault hero has been restored.
             const pdfBlob = doc.output('blob');
+            _previewBlob = pdfBlob;
             _previewBlobUrl = URL.createObjectURL(pdfBlob);
             if (openTabBtn) openTabBtn.style.display = 'inline-block';
+
+            // Android Chrome/WebViews cannot render blob PDFs inside an
+            // iframe — they show a stub page (PDF icon, blob id, Open
+            // button) instead of the pages. Skip the iframe there and go
+            // straight to the fallback panel, whose buttons use the blob.
+            if (/Android/i.test(navigator.userAgent || '')) {
+                showPdfPreviewFallback();
+                return;
+            }
 
             // Try iframe first
             loading.style.display = 'none';
@@ -32725,9 +32752,33 @@ if(document.readyState === 'loading') {
     };
 
     // ── Download from preview ─────────────────────────────────────────────────
+    // Downloads the PDF that was actually built for this preview. It must NOT
+    // rebuild via exportCharacterPDF: a vault preview temp-loads its hero and
+    // restores the user's own hero the moment the preview opens, so a rebuild
+    // would export the wrong character (this produced blank default sheets).
     window.pdfPreviewDownload = async function() {
+        var blob = _previewBlob;
+        var fname = _previewFilename || 'character_sheet.pdf';
         closePdfPreview();
-        // Close the preview then trigger the real export
+        if (blob) {
+            try {
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = fname;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+                return;
+            } catch(e) {
+                if (typeof window._bullpenShareOrDownload === 'function') {
+                    window._bullpenShareOrDownload(fname, blob, 'application/pdf');
+                    return;
+                }
+            }
+        }
+        // No captured PDF (preview never built) — fall back to a fresh export.
         if (typeof exportCharacterPDF === 'function') {
             exportCharacterPDF(_previewLayout);
         }
