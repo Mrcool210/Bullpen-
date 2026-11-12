@@ -19360,6 +19360,141 @@ function bpDeleteEncounterAndRefresh(i) {
     bpRenderFightEntry();
 }
 
+
+// ---- Goon Calculator (Core Rulebook: "Balancing Combats") ----
+// Book math: the simplest balanced fight matches every hero with a foe of
+// equal rank; one character is also an even match for two foes of the next
+// lower rank, or four foes two ranks lower, and so on. So a fighter's
+// weight doubles with each rank: weight = 2^rank. Mark a staged narrator
+// type as Goons and the calculator fills the rest of the heroes' target
+// weight — after the bosses (unmarked villains) take their share — with
+// copies of the goon types, split evenly between them.
+window._bpFightGoons = window._bpFightGoons || {};
+window._bpGoonTarget = (typeof window._bpGoonTarget === 'number') ? window._bpGoonTarget : 1;
+window._bpGoonCalcTypes = [];
+
+function bpGoonWeight(rank) { return Math.pow(2, Math.max(1, parseInt(rank, 10) || 1)); }
+
+function bpGoonOn(baseName) { return !!(window._bpFightGoons && window._bpFightGoons[baseName]); }
+
+function bpToggleGoonUid(uid) {
+    const c = combatants.find(function(x){ return x.uid === uid; });
+    if(!c || c.side !== 'narrator') return;
+    if(bpGoonOn(c.baseName)) delete window._bpFightGoons[c.baseName];
+    else window._bpFightGoons[c.baseName] = true;
+    bpRenderStagedStrip();
+}
+
+function bpGoonSetTarget(m) { window._bpGoonTarget = m; bpRenderGoonPanel(); }
+
+function bpGoonCalc() {
+    const heroes = combatants.filter(function(c){ return c.side === 'hero'; });
+    const narrator = combatants.filter(function(c){ return c.side === 'narrator'; });
+    const heroRanks = heroes.map(function(c){ return Math.max(1, parseInt(c.rank, 10) || 1); });
+    const top = heroRanks.slice().sort(function(a, b){ return b - a; }).slice(0, 6);
+    const teamRank = top.length ? Math.ceil(top.reduce(function(a, b){ return a + b; }, 0) / top.length) : 0;
+    const heroWeight = heroRanks.reduce(function(a, r){ return a + bpGoonWeight(r); }, 0);
+    let bossWeight = 0, goonWeight = 0, goonStaged = 0;
+    const typeMap = {}, typeOrder = [];
+    narrator.forEach(function(c) {
+        const w = bpGoonWeight(c.rank);
+        if(bpGoonOn(c.baseName)) {
+            goonWeight += w; goonStaged++;
+            if(!typeMap[c.baseName]) { typeMap[c.baseName] = { baseName: c.baseName, rank: Math.max(1, parseInt(c.rank, 10) || 1), staged: 0, add: 0, targetCopies: 0 }; typeOrder.push(c.baseName); }
+            typeMap[c.baseName].staged++;
+        } else bossWeight += w;
+    });
+    const mult = (typeof window._bpGoonTarget === 'number') ? window._bpGoonTarget : 1;
+    const targetWeight = Math.round(mult * heroWeight);
+    const goonBudget = targetWeight - bossWeight;
+    const types = typeOrder.map(function(k){ return typeMap[k]; });
+    if(types.length && goonBudget > 0) {
+        const share = goonBudget / types.length;
+        types.forEach(function(t) {
+            t.targetCopies = Math.round(share / bpGoonWeight(t.rank));
+            t.add = Math.max(0, t.targetCopies - t.staged);
+        });
+    }
+    return { heroCount: heroes.length, teamRank: teamRank, heroWeight: heroWeight,
+        bossWeight: bossWeight, bossCount: narrator.length - goonStaged,
+        goonWeight: goonWeight, enemyWeight: bossWeight + goonWeight,
+        targetWeight: targetWeight, goonBudget: goonBudget, mult: mult, types: types };
+}
+
+function bpGoonSourceData(baseName) {
+    const staged = combatants.find(function(c){ return c.side === 'narrator' && c.baseName === baseName; });
+    if(!staged) return null;
+    try {
+        if(staged.vaultId && typeof getVault === 'function') {
+            const h = getVault().find(function(x){ return x && x.vaultId === staged.vaultId; });
+            if(h) return h;
+        }
+    } catch(e) {}
+    try {
+        if(typeof getNarratorRoster === 'function') {
+            const r = getNarratorRoster().find(function(x){ return x && (x.heroName || x.realName || x.name) === baseName; });
+            if(r) return r;
+        }
+    } catch(e) {}
+    try {
+        if(typeof getVault === 'function') {
+            const m = getVault().filter(function(x){ return x && x.vaultId && (x.heroName || x.realName || x.name) === baseName; });
+            if(m.length === 1) return m[0];
+        }
+    } catch(e) {}
+    return { heroName: staged.baseName, rank: staged.rank, resilience: staged.resilience || 0, vigilance: staged.vigilance || 0, notes: staged.notes || '', tags: [], powers: staged.powers || [], traits: [] };
+}
+
+function bpGoonAddType(i) {
+    const t = (window._bpGoonCalcTypes || [])[i];
+    if(!t || !(t.add > 0)) return;
+    const data = bpGoonSourceData(t.baseName);
+    if(!data) { bpFightNotice('Could not find the sheet for ' + t.baseName + ' to add copies.'); return; }
+    _pushCombatantFromData(data, 'narrator', t.add);
+    renderActiveCombat();
+    bpRenderStagedStrip();
+    bpFightNotice('Added ' + t.add + ' more ' + t.baseName + '.');
+}
+
+function bpRenderGoonPanel() {
+    const el = document.getElementById('fightGoonPanel');
+    if(!el) return;
+    const calc = bpGoonCalc();
+    window._bpGoonCalcTypes = calc.types;
+    const btn = 'width:auto;padding:3px 10px;font-size:0.78em;border-radius:4px;cursor:pointer;';
+    const targets = [ [0.5, '½× Warm-up'], [0.75, '¾× Standard'], [1, '1× Even match'], [1.5, '1½× Climax'] ];
+    let h = '<div style="background:#141210;border:1px solid #4a3a14;border-radius:8px;padding:10px 12px;">'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span style="font-size:0.88em;font-weight:bold;letter-spacing:0.5px;">🧮 Goon Calculator</span><span style="font-size:0.72em;color:#998;">Core Rulebook — Balancing Combats: one hero matches one equal-rank foe, two foes a rank lower, four foes two ranks lower…</span></div>';
+    if(!calc.heroCount) {
+        h += '<div style="font-size:0.82em;color:#aaa;">Add heroes in Step 1 first — the calculator sizes the goons to them.</div>';
+    } else {
+        h += '<div style="font-size:0.82em;color:#ccc;margin-bottom:6px;">' + calc.heroCount + ' hero' + (calc.heroCount === 1 ? '' : 'es')
+            + ' · Team Rank ' + calc.teamRank + ' · even-match weight ' + calc.heroWeight
+            + (calc.bossCount ? ' · bosses take ' + calc.bossWeight : '')
+            + ' · enemy weight so far ' + calc.enemyWeight + ' of ' + calc.targetWeight + ' targeted</div>';
+        h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span style="font-size:0.78em;color:#998;">Fight size:</span>'
+            + targets.map(function(t) {
+                const on = Math.abs(calc.mult - t[0]) < 0.001;
+                return '<button onclick="bpGoonSetTarget(' + t[0] + ')" style="' + btn + (on ? 'background:#5a3a00;border:1px solid #aa7a22;color:#ffd98a;font-weight:bold;' : 'background:#222;border:1px solid #444;color:#bbb;') + '">' + t[1] + '</button>';
+            }).join('') + '</div>';
+        if(!calc.types.length) {
+            h += '<div style="font-size:0.82em;color:#cbb;">No goons marked yet — stage at least one of each villain, then tap <strong>Goon</strong> on the goon types above. The calculator fills the rest of the fight with them.</div>';
+        } else if(calc.goonBudget <= 0) {
+            h += '<div style="font-size:0.82em;color:#cfe8a8;">Your bosses alone already meet this fight size — no goons needed.</div>';
+        } else {
+            h += calc.types.map(function(t, i) {
+                return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:0.82em;color:#ddd;padding:3px 0;">'
+                    + '<span style="flex:1;min-width:150px;"><strong>' + _bpFightEsc(t.baseName) + '</strong> <span style="color:#998;">(Rank ' + t.rank + ')</span> — ' + t.staged + ' staged'
+                    + (t.add > 0 ? ', add <strong>' + t.add + '</strong> more' : ' — <span style="color:#cfe8a8;">enough staged</span>') + '</span>'
+                    + (t.add > 0 ? '<button onclick="bpGoonAddType(' + i + ')" style="' + btn + 'background:#1a4400;border:1px solid #44aa44;color:#dfffc8;font-weight:bold;">＋ Add ' + t.add + '</button>' : '')
+                    + '</div>';
+            }).join('');
+        }
+    }
+    h += '</div>';
+    el.innerHTML = h;
+}
+
 function bpRenderFightSetup() {
     const el = document.getElementById('fightSetupBar');
     if(!el) return;
@@ -19379,6 +19514,7 @@ function bpRenderFightSetup() {
         + '</div>'
         + editBanner
         + '<div id="fightStagedStrip" style="font-size:0.85em;margin-bottom:10px;"></div>'
+        + (step2 ? '<div id="fightGoonPanel" style="margin-bottom:10px;"></div>' : '')
         + '<div id="fightAddNotice" style="display:none;font-size:0.82em;color:#cfe8a8;background:#16240f;border:1px solid #3a5a22;border-radius:5px;padding:6px 10px;margin-bottom:10px;"></div>'
         + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'
         + '<input id="fightSaveName" type="text" oninput="if(window._bpEditingEncounter) window._bpEditingEncounter.currentName = this.value;" placeholder="Battle name…" style="flex:1;min-width:130px;padding:7px 10px;font-size:0.82em;background:var(--bg-inset);border:1px solid #333;border-radius:5px;color:var(--text-main);">'
@@ -19391,11 +19527,13 @@ function bpRenderFightSetup() {
         + '</div>';
     if(editing) { const inp = document.getElementById('fightSaveName'); if(inp) inp.value = editing.currentName || editing.name || ''; }
     bpRenderStagedStrip();
+    if(step2) bpRenderGoonPanel();
 }
 
 function bpRenderStagedStrip() {
     const el = document.getElementById('fightStagedStrip');
     if(!el) return;
+    bpRenderGoonPanel();
     if(!combatants.length) {
         el.innerHTML = '<span style="color:#666;font-style:italic;">No fighters staged yet — use "+ To Fight" on the roster below.</span>';
         return;
@@ -19403,6 +19541,9 @@ function bpRenderStagedStrip() {
     el.innerHTML = '<span style="color:#888;">In this fight:</span> ' + combatants.map(function(c) {
         return '<span style="display:inline-flex;align-items:center;gap:4px;background:#1c1c1c;border:1px solid #333;border-left:3px solid ' + (c.side === 'hero' ? '#44aaff' : '#cc44ff') + ';border-radius:4px;padding:2px 4px 2px 8px;margin:2px;font-size:0.85em;">'
             + _bpFightEsc(c.label)
+            + ((c.side === 'narrator' && (typeof fightUiPhase !== 'undefined') && fightUiPhase === 'setup-narrator')
+                ? '<button onclick="bpToggleGoonUid(\'' + c.uid + '\')" title="Goon — the calculator fills the fight with this type" style="width:auto;min-width:0;padding:0 6px;margin:0;border-radius:3px;cursor:pointer;font-size:0.78em;' + (bpGoonOn(c.baseName) ? 'background:#5a3a00;border:1px solid #aa7a22;color:#ffd98a;' : 'background:#222;border:1px solid #444;color:#999;') + '">Goon</button>'
+                : '')
             + '<button onclick="bpRemoveStaged(\'' + c.uid + '\')" title="Remove" style="width:auto;min-width:0;padding:0 4px;margin:0;border:none;background:transparent;color:#f88;cursor:pointer;font-size:1em;">✕</button></span>';
     }).join('')
     + ' <button onclick="clearCombat(); bpRenderStagedStrip();" style="width:auto;padding:2px 8px;font-size:0.78em;background:#2a0d0d;border:1px solid #6a1a1a;border-radius:4px;color:#ff9999;cursor:pointer;">Clear all</button>';
@@ -20505,6 +20646,7 @@ function bpSaveEncounterCore(name, kind) {
             const e = { qty: 1, side: c.side };
             if(c.vaultId) { e.kind = 'vault'; e.vaultId = c.vaultId; }
             else { e.kind = 'narrator'; e.name = c.baseName; e.rank = c.rank; e.res = c.resilience || 0; e.vig = c.vigilance || 0; e.notes = c.notes || ''; }
+            if(bpGoonOn(c.baseName)) e.goon = true;
             if(c.conditions && c.conditions.length) { e.conds = c.conditions.slice(); if(c.conditionAmounts && Object.keys(c.conditionAmounts).length) e.condAmt = Object.assign({}, c.conditionAmounts); }
             e.state = { hp: c.currentHp, fp: c.currentFp, maxHp: c.maxHp, maxFp: c.maxFp, initiative: c.initiative || 0, karma: c.karma || 0, status: c.status || '', used: (c.usedPowers || []).slice() };
             return e;
@@ -20529,6 +20671,7 @@ function bpSaveEncounterCore(name, kind) {
                 g = { key: key, qty: 0, side: c.side };
                 if(c.vaultId) { g.kind = 'vault'; g.vaultId = c.vaultId; }
                 else { g.kind = 'narrator'; g.name = c.baseName; g.rank = c.rank; g.res = c.resilience || 0; g.vig = c.vigilance || 0; g.notes = c.notes || ''; }
+                if(bpGoonOn(c.baseName)) g.goon = true;
                 if(c.conditions && c.conditions.length) { g.conds = c.conditions.slice(); g.condAmt = Object.assign({}, c.conditionAmounts || {}); }
                 groups.push(g);
             }
@@ -20538,6 +20681,7 @@ function bpSaveEncounterCore(name, kind) {
             const e = { kind: g.kind, qty: g.qty, side: g.side };
             if(g.kind === 'vault') e.vaultId = g.vaultId;
             else { e.name = g.name; e.rank = g.rank; e.res = g.res; e.vig = g.vig; e.notes = g.notes; }
+            if(g.goon) e.goon = true;
             if(g.conds && g.conds.length) { e.conds = g.conds; if(g.condAmt && Object.keys(g.condAmt).length) e.condAmt = g.condAmt; }
             return e;
         });
@@ -20605,6 +20749,7 @@ function bpStageEncounter(enc, resumeIndex) {
     window._bpEditingEncounter = null;
     const entryFirstIdx = [];
     combatants = []; initiativeOrder = []; combatTurn = -1; combatPhase = 'lobby';
+    window._bpFightGoons = {};
     initiativeRolls = {}; bonusOrder = []; mainOrder = []; bonusTurn = 0; mainTurn = 0;
     combatRound = 1; combatPlot = 0; combatKarma = 0;
     let skipped = 0, added = 0;
@@ -20634,6 +20779,7 @@ function bpStageEncounter(enc, resumeIndex) {
         // Restore any conditions saved with this entry, including custom
         // per-turn amounts, onto the combatants this entry just created.
         if(combatants.length > _before) entryFirstIdx[ei] = _before;
+        if(e.goon && combatants.length > _before) window._bpFightGoons[combatants[_before].baseName] = true;
         if(e.conds && e.conds.length) {
             for(let k = _before; k < combatants.length; k++) {
                 combatants[k].conditions = e.conds.slice();
@@ -21010,6 +21156,7 @@ async function clearCombat() {
     if(combatants.length === 0) { combatPhase='lobby'; initiativeRolls={}; bonusOrder=[]; mainOrder=[]; bonusTurn=0; mainTurn=0; combatPlot=0; combatKarma=0; combatRound=1; renderActiveCombat(); return; }
     if(!await showConfirm('Clear all combatants from the active fight?', '🗑️')) return;
     combatants=[]; initiativeOrder=[]; combatTurn=-1; combatPhase='lobby'; initiativeRolls={}; bonusOrder=[]; mainOrder=[]; bonusTurn=0; mainTurn=0;
+    window._bpFightGoons = {};
     combatPlot=0; combatKarma=0; combatRound=1;
     renderActiveCombat();
 }
