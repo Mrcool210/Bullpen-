@@ -19361,19 +19361,28 @@ function bpDeleteEncounterAndRefresh(i) {
 }
 
 
-// ---- Goon Calculator (Core Rulebook: "Balancing Combats") ----
-// Book math: the simplest balanced fight matches every hero with a foe of
-// equal rank; one character is also an even match for two foes of the next
-// lower rank, or four foes two ranks lower, and so on. So a fighter's
-// weight doubles with each rank: weight = 2^rank. Mark a staged narrator
-// type as Goons and the calculator fills the rest of the heroes' target
-// weight — after the bosses (unmarked villains) take their share — with
-// copies of the goon types, split evenly between them.
+// ---- Goon Calculator (Enter: Hydra!: "The Big Fight") ----
+// Book math: "Add up the ranks of the heroes on the team and consult the
+// table" — an even match is measured in TOTAL HERO RANKS, and every foe
+// costs its rank. (The book's chart, for its Rank 4 armored agents: up to
+// 4 total ranks -> 1 agent, 5-10 -> 2, 11-14 -> 3, 15-18 -> 4, 19-22 -> 5,
+// 23+ -> 6.) Mark a staged narrator type as Goons and the calculator fills
+// the rest of the heroes' target ranks — after the bosses (unmarked
+// villains) pay their rank — with copies of the goon types, split evenly
+// between them.
 window._bpFightGoons = window._bpFightGoons || {};
 window._bpGoonTarget = (typeof window._bpGoonTarget === 'number') ? window._bpGoonTarget : 1;
 window._bpGoonCalcTypes = [];
 
-function bpGoonWeight(rank) { return Math.pow(2, Math.max(1, parseInt(rank, 10) || 1)); }
+function bpGoonCopies(share, rank, heroSum, typeCount) {
+    // Enter: Hydra! rounding: the book's chart equals floor((ranks+1)/foe
+    // rank) across its whole range (checked 1-24 vs Rank 4 foes, incl. its
+    // worked example: 21 total ranks -> 5 agents).
+    let n = Math.floor(((parseFloat(share) || 0) + 1) / Math.max(1, parseInt(rank, 10) || 1));
+    if(n < 1 && share >= 1) n = 1;
+    if(typeCount === 1 && heroSum >= 5 && n < 2) n = 2; // chart floor: 5+ ranks never face just 1
+    return n;
+}
 
 function bpGoonOn(baseName) { return !!(window._bpFightGoons && window._bpFightGoons[baseName]); }
 
@@ -19393,32 +19402,32 @@ function bpGoonCalc() {
     const heroRanks = heroes.map(function(c){ return Math.max(1, parseInt(c.rank, 10) || 1); });
     const top = heroRanks.slice().sort(function(a, b){ return b - a; }).slice(0, 6);
     const teamRank = top.length ? Math.ceil(top.reduce(function(a, b){ return a + b; }, 0) / top.length) : 0;
-    const heroWeight = heroRanks.reduce(function(a, r){ return a + bpGoonWeight(r); }, 0);
-    let bossWeight = 0, goonWeight = 0, goonStaged = 0;
+    const heroSum = heroRanks.reduce(function(a, r){ return a + r; }, 0);
+    let bossSum = 0, goonSum = 0, goonStaged = 0;
     const typeMap = {}, typeOrder = [];
     narrator.forEach(function(c) {
-        const w = bpGoonWeight(c.rank);
+        const w = Math.max(1, parseInt(c.rank, 10) || 1);
         if(bpGoonOn(c.baseName)) {
-            goonWeight += w; goonStaged++;
+            goonSum += w; goonStaged++;
             if(!typeMap[c.baseName]) { typeMap[c.baseName] = { baseName: c.baseName, rank: Math.max(1, parseInt(c.rank, 10) || 1), staged: 0, add: 0, targetCopies: 0 }; typeOrder.push(c.baseName); }
             typeMap[c.baseName].staged++;
-        } else bossWeight += w;
+        } else bossSum += w;
     });
     const mult = (typeof window._bpGoonTarget === 'number') ? window._bpGoonTarget : 1;
-    const targetWeight = Math.round(mult * heroWeight);
-    const goonBudget = targetWeight - bossWeight;
+    const targetRanks = Math.round(mult * heroSum);
+    const goonBudget = targetRanks - bossSum;
     const types = typeOrder.map(function(k){ return typeMap[k]; });
     if(types.length && goonBudget > 0) {
         const share = goonBudget / types.length;
         types.forEach(function(t) {
-            t.targetCopies = Math.round(share / bpGoonWeight(t.rank));
+            t.targetCopies = bpGoonCopies(share, t.rank, heroSum, types.length);
             t.add = Math.max(0, t.targetCopies - t.staged);
         });
     }
-    return { heroCount: heroes.length, teamRank: teamRank, heroWeight: heroWeight,
-        bossWeight: bossWeight, bossCount: narrator.length - goonStaged,
-        goonWeight: goonWeight, enemyWeight: bossWeight + goonWeight,
-        targetWeight: targetWeight, goonBudget: goonBudget, mult: mult, types: types };
+    return { heroCount: heroes.length, teamRank: teamRank, heroSum: heroSum,
+        bossSum: bossSum, bossCount: narrator.length - goonStaged,
+        goonSum: goonSum, enemySum: bossSum + goonSum,
+        targetRanks: targetRanks, goonBudget: goonBudget, mult: mult, types: types };
 }
 
 function bpGoonSourceData(baseName) {
@@ -19464,14 +19473,14 @@ function bpRenderGoonPanel() {
     const btn = 'width:auto;padding:3px 10px;font-size:0.78em;border-radius:4px;cursor:pointer;';
     const targets = [ [0.5, '½× Warm-up'], [0.75, '¾× Standard'], [1, '1× Even match'], [1.5, '1½× Climax'] ];
     let h = '<div style="background:#141210;border:1px solid #4a3a14;border-radius:8px;padding:10px 12px;">'
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span style="font-size:0.88em;font-weight:bold;letter-spacing:0.5px;">🧮 Goon Calculator</span><span style="font-size:0.72em;color:#998;">Core Rulebook — Balancing Combats: one hero matches one equal-rank foe, two foes a rank lower, four foes two ranks lower…</span></div>';
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span style="font-size:0.88em;font-weight:bold;letter-spacing:0.5px;">🧮 Goon Calculator</span><span style="font-size:0.72em;color:#998;">Enter: Hydra! — add up the ranks of the heroes; every foe costs its rank. Bosses pay first; goons split the rest.</span></div>';
     if(!calc.heroCount) {
         h += '<div style="font-size:0.82em;color:#aaa;">Add heroes in Step 1 first — the calculator sizes the goons to them.</div>';
     } else {
         h += '<div style="font-size:0.82em;color:#ccc;margin-bottom:6px;">' + calc.heroCount + ' hero' + (calc.heroCount === 1 ? '' : 'es')
-            + ' · Team Rank ' + calc.teamRank + ' · even-match weight ' + calc.heroWeight
-            + (calc.bossCount ? ' · bosses take ' + calc.bossWeight : '')
-            + ' · enemy weight so far ' + calc.enemyWeight + ' of ' + calc.targetWeight + ' targeted</div>';
+            + ' · Team Rank ' + calc.teamRank + ' · total hero ranks ' + calc.heroSum
+            + (calc.bossCount ? ' · bosses take ' + calc.bossSum : '')
+            + ' · enemy ranks so far ' + calc.enemySum + ' of ' + calc.targetRanks + ' targeted</div>';
         h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;"><span style="font-size:0.78em;color:#998;">Fight size:</span>'
             + targets.map(function(t) {
                 const on = Math.abs(calc.mult - t[0]) < 0.001;
