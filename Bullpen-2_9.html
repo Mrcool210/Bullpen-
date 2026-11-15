@@ -4887,6 +4887,8 @@ None — anyone can take this power
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
 <h3 style="margin:0; border:none; padding:0;">⚔ Active Combat</h3>
 <button onclick="toggleCombatActionsPanel()" title="Combat rules (Spider-Verse &amp; Avengers Expansions): Disarm, Taunt, Ultimate Fantastic initiative" style="width:auto; padding:8px 14px; font-size:0.82em; background:#3a2a00; border:1px solid #aa7711; border-radius:5px; color:#ffcc66; cursor:pointer;">📖 Actions</button>
+<button onclick="bpToggleTeamManPanel()" title="Team maneuvers (Core Ch. 4 + expansions)" style="width:auto; padding:8px 14px; font-size:0.82em; background:#0a2a3a; border:1px solid #1a6a8a; border-radius:5px; color:#aad4ff; cursor:pointer;">🤝 Team Maneuvers</button>
+<button onclick="bpToggleMentalPanel()" title="Mental duels (X-Men Expansion)" style="width:auto; padding:8px 14px; font-size:0.82em; background:#2a0a3a; border:1px solid #6a1a8a; border-radius:5px; color:#ddaaff; cursor:pointer;">🧠 Mental Duel</button>
 <div id="combatHeaderBtns" style="display:flex; gap:8px; flex-wrap:wrap;">
 <button onclick="showInitiativeScreen()" style="width:auto; padding:8px 14px; font-size:0.82em; background:#005a9e;">🎲 Roll For Initiative</button>
 <button class="btn-danger" onclick="clearCombat()" style="width:auto; padding:8px 14px; font-size:0.82em;">🗑 Clear Combat</button>
@@ -4924,6 +4926,23 @@ Goad an enemy and make a <strong>Vigilance check</strong>.<br>
 <strong>Fantastic success:</strong> they also have trouble on that attack.
 </div>
 <div style="background:#1c1508; border:1px solid #554411; border-radius:6px; padding:10px 12px;">
+<div style="font-weight:bold; color:#ffcc66; margin-bottom:4px;">🚗 Vehicle Combat <span style="font-weight:normal; color:#997744;">— (X-Men / Spider-Verse Expansions)</span></div>
+The operator keeps control with an <strong>Agility check</strong> (movement action); on a failure they must spend a reaction (right after) or a standard action (later) to retry and regain control. Non-VTOL aircraft cannot engage in standard combat.<br>
+Below <strong>half Health</strong>, a vehicle's speed is halved; below <strong>1 Health</strong> it stops; at negative Health equal to its maximum, it is destroyed beyond repair — and the final attack's damage applies to everyone inside.<br>
+<strong>Crashes:</strong> roll d616 with a damage multiplier of the vehicle's speed ÷ 3 (rounded up), max ×20; a safety harness halves the damage.
+</div>
+<div style="background:#1c1508; border:1px solid #554411; border-radius:6px; padding:10px 12px;">
+<div style="font-weight:bold; color:#ffcc66; margin-bottom:4px;">🌍 Falling Damage <span style="font-weight:normal; color:#997744;">— (Core Ch. 4)</span></div>
+Damage multiplier = <strong>1 per 3 spaces fallen</strong> (max ×20), rolled on the Marvel die. A controlled landing subtracts the character's Jump Speed (in spaces) from the fall first. Damage Reduction applies as usual.<br>
+<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:7px;">
+<select id="fallTarget" style="flex:1 1 130px; padding:6px; background:#1c1508; border:1px solid #554411; border-radius:5px; color:#eee;"></select>
+<label style="color:#997744;">Spaces <input id="fallSpaces" type="number" min="0" value="9" style="width:58px; padding:6px; background:#1c1508; border:1px solid #554411; border-radius:5px; color:#eee;"></label>
+<label style="color:#997744;">Jump − <input id="fallJump" type="number" min="0" value="0" style="width:52px; padding:6px; background:#1c1508; border:1px solid #554411; border-radius:5px; color:#eee;"></label>
+<label style="color:#997744;">Marvel die <select id="fallDie" style="padding:6px; background:#1c1508; border:1px solid #554411; border-radius:5px; color:#eee;"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>M</option></select></label>
+<button onclick="bpFallingApply()" style="padding:7px 12px; background:#3a2a00; border:1px solid #aa7711; border-radius:5px; color:#ffcc66; font-weight:bold; cursor:pointer;">Apply fall</button>
+</div>
+</div>
+<div style="background:#1c1508; border:1px solid #554411; border-radius:6px; padding:10px 12px;">
 <div style="font-weight:bold; color:#ffcc66; margin-bottom:4px;">★ Ultimate Fantastic Initiative <span style="font-weight:normal; color:#997744;">(p.135)</span></div>
 A <strong>6 M 6</strong> on an initiative check is an ultimate Fantastic success: the character takes part in the bonus round <em>and</em> may turn their Marvel die to an <strong>M</strong> on any single action check during it. Mark it with the <strong>6M6?</strong> toggle on the initiative screen.
 </div>
@@ -4934,6 +4953,8 @@ A <strong>6 M 6</strong> on an initiative check is an ultimate Fantastic success
 
 
 
+<div id="bpTeamManPanel" style="display:none; background:#0a141c; border:1px solid #1a6a8a; border-radius:8px; padding:14px 16px; margin-bottom:12px;"></div>
+<div id="bpMentalPanel" style="display:none; background:#140a1c; border:1px solid #6a1a8a; border-radius:8px; padding:14px 16px; margin-bottom:12px;"></div>
 <div id="turnBanner" style="display:none; background:#1a3300; border:1px solid #44ff88; border-radius:6px; padding:8px 14px; margin-bottom:12px; font-weight:bold; color:#44ff88; font-size:0.9em;"></div>
 <div id="activeCombat">
 <p style="color:#555; font-style:italic; font-size:0.85em;">No combatants yet. Add heroes and narrator characters to the rosters above, then use "+ To Fight" to bring them into combat.</p>
@@ -10244,7 +10265,8 @@ function updateDamage() {
         const abilityScore = parseInt(document.getElementById(stat).value) || 0;
         const powerBonus = getPowerBonus(dmgBoosters[stat] || []);
         const iconicBonus = iconicDmg[stat] || 0;
-        const bonus      = powerBonus + iconicBonus;
+        // Damage-multiplier bonuses never stack (Core) — take the largest.
+        const bonus      = Math.max(powerBonus, iconicBonus);
         const multiplier = rank + bonus;
         const valEl      = document.getElementById(`dmgval-${stat}`);
         const abilEl     = document.getElementById(`dmgability-${stat}`);
@@ -10253,9 +10275,9 @@ function updateDamage() {
         if(abilEl) abilEl.textContent = abilityScore;
         if(bonusEl) {
             if(bonus > 0) {
-                bonusEl.textContent  = iconicBonus > 0
-                    ? (powerBonus > 0 ? `+${bonus} from powers & iconic weapon` : `+${bonus} from iconic weapon`)
-                    : `+${bonus} from powers`;
+                bonusEl.textContent  = iconicBonus > 0 && powerBonus > 0
+                    ? (iconicBonus >= powerBonus ? `+${bonus} from iconic weapon (bonuses don't stack)` : `+${bonus} from powers (bonuses don't stack)`)
+                    : iconicBonus > 0 ? `+${bonus} from iconic weapon` : `+${bonus} from powers`;
                 bonusEl.style.display = "block";
             } else {
                 bonusEl.style.display = "none";
@@ -17483,6 +17505,12 @@ function _pushCombatantFromData(data, side, qty) {
     const baseName = data.heroName || data.realName || data.name || "Character";
     const existingCount = combatants.filter(c => c.baseName === baseName).length;
     qty = Math.max(1, parseInt(qty, 10) || 1);
+    // Spider-Verse variant: fight length scales Health/Focus (×10 quick,
+    // ×30 standard, ×100 epic). Avengers Big Fights: identical narrator
+    // combatants can be staged as one grouped unit with pooled pools.
+    const _flScale = (window._bpFightLength && window._bpFightLength !== 30) ? window._bpFightLength / 30 : 1;
+    const _groupUnits = !!(window._bpBigFight && window._bpBigFight.group) && side === 'narrator' && qty > 1;
+    const _startIdx = combatants.length;
 
     for(let i = 0; i < qty; i++) {
         const rank = parseInt(data.rank || 1);
@@ -17491,8 +17519,8 @@ function _pushCombatantFromData(data, side, qty) {
         // The combatant's OWN traits (manual + origin/occupation-granted), never the editor's.
         const _nh = (typeof normalizeHeroSave === 'function') ? normalizeHeroSave(data) : (data || {});
         const _combatTraits = [...(_nh.traits || []), ...(_nh.traitBonus || [])];
-        const maxHp = calcHp(res, rank);
-        const maxFp = calcFp(vig, rank, _combatTraits);
+        const maxHp = Math.round(calcHp(res, rank) * _flScale);
+        const maxFp = Math.round(calcFp(vig, rank, _combatTraits) * _flScale);
         const instanceNum = existingCount + i + 1;
         const label = qty > 1 || existingCount > 0 ? `${baseName} #${instanceNum}` : baseName;
 
@@ -17529,6 +17557,22 @@ function _pushCombatantFromData(data, side, qty) {
             iconicDmg: (data.iconicItems && typeof getIconicWeaponDmgBonus === 'function')
                 ? getIconicWeaponDmgBonus(data.iconicItems, data.iconicItemsData) : null
         });
+    }
+    if(_groupUnits) {
+        const added = combatants.splice(_startIdx, qty);
+        if(added.length > 1) {
+            const first = added[0];
+            first.groupMemberHp = first.maxHp;
+            first.groupMemberFp = first.maxFp;
+            first.maxHp = added.reduce(function(a, c){ return a + c.maxHp; }, 0);
+            first.currentHp = first.maxHp;
+            first.maxFp = added.reduce(function(a, c){ return a + c.maxFp; }, 0);
+            first.currentFp = first.maxFp;
+            first.groupCount = added.length;
+            first.groupLeft = added.length;
+            first.label = baseName + ' ×' + added.length + ' (group)';
+            combatants.splice(_startIdx, 0, first);
+        }
     }
 }
 
@@ -17580,6 +17624,35 @@ function toggleCombatActionsPanel() {
     const p = document.getElementById('combatActionsPanel');
     if(!p) return;
     p.style.display = (p.style.display === 'none' || !p.style.display) ? 'block' : 'none';
+    if(p.style.display === 'block') bpFallingPopulate();
+}
+// Falling damage (Core Ch. 4): damage multiplier = 1 per 3 spaces fallen
+// (max ×20), rolled on the Marvel die. A controlled landing subtracts the
+// character's Jump Speed (in spaces) from the fall first.
+function bpFallingPopulate() {
+    const sel = document.getElementById('fallTarget');
+    if(!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = combatants.map(function(c){ return '<option value="' + bpSafeUid(c) + '">' + _bpEsc(c.label || c.baseName) + '</option>'; }).join('');
+    if(cur) sel.value = cur;
+}
+function bpFallingApply() {
+    const selEl = document.getElementById('fallTarget');
+    const c = selEl ? (typeof _findBySafeUid === 'function' ? _findBySafeUid(selEl.value) : null) : null;
+    if(!c) { if(typeof showNotice === 'function') showNotice('Pick who is falling first.'); return; }
+    const spaces = Math.max(0, parseInt((document.getElementById('fallSpaces') || {}).value, 10) || 0);
+    const jump = Math.max(0, parseInt((document.getElementById('fallJump') || {}).value, 10) || 0);
+    const dieRaw = (document.getElementById('fallDie') || {}).value || '4';
+    const marvel = dieRaw === 'M' ? 6 : (parseInt(dieRaw, 10) || 0);
+    const eff = Math.max(0, spaces - jump);
+    const mult = Math.min(20, Math.floor(eff / 3));
+    const raw = marvel * mult;
+    const r = bpManualDamageAfterDR(c, raw, 'hp');
+    c.currentHp = Math.max(-(c.maxHp || 0), c.currentHp - r.actual);
+    c.lastEvent = '🌍 Falling damage: fell ' + spaces + ' spaces' + (jump ? ' (controlled landing −' + jump + ')' : '') + ' — ×' + mult + ' multiplier, took ' + r.actual + ' damage' + (r.blocked > 0 ? ' (' + r.blocked + ' absorbed by DR ' + r.dr + ')' : '') + '.' + (c.currentHp <= -(c.maxHp || 0) ? ' 💀 Dead.' : '');
+    if(c.currentHp <= 0) bpEndConcentration(c, 'downed');
+    if(typeof renderActiveCombat === 'function') renderActiveCombat();
+    if(typeof showNotice === 'function') showNotice(c.lastEvent);
 }
 
 // ---- Active combat rendering ----
@@ -17724,13 +17797,37 @@ function renderInitiativeScreen() {
 
 function initiateCombat() {
     // Sort by roll descending
+    // Core Ch. 4 tie-breaks on equal totals: a Fantastic initiative roll
+    // wins, then higher Vigilance, then a player's character first.
     const allSorted = [...combatants].sort((a,b) => {
         const ra = initiativeRolls[a.uid]?.roll || 0;
         const rb = initiativeRolls[b.uid]?.roll || 0;
-        return rb - ra;
+        if(rb !== ra) return rb - ra;
+        const fa = initiativeRolls[a.uid]?.fantastic ? 1 : 0;
+        const fb = initiativeRolls[b.uid]?.fantastic ? 1 : 0;
+        if(fb !== fa) return fb - fa;
+        const va = a.vigilance || 0, vb = b.vigilance || 0;
+        if(vb !== va) return vb - va;
+        const ha = a.side === 'hero' ? 1 : 0, hb = b.side === 'hero' ? 1 : 0;
+        return hb - ha;
     });
     mainOrder = allSorted.map(c => c.uid);
-    bonusOrder = allSorted.filter(c => initiativeRolls[c.uid]?.fantastic).map(c => c.uid);
+    // Surprised characters cannot act in the bonus round (Core Ch. 4).
+    bonusOrder = allSorted.filter(c => initiativeRolls[c.uid]?.fantastic && !(c.conditions || []).some(function(x){ return String(x).toLowerCase() === 'surprised'; })).map(c => c.uid);
+    // Big Fights (Avengers): initiative is per side — each side uses its
+    // best roll, heroes win ties, Fantastic results are ignored and there
+    // is no bonus round.
+    if(window._bpBigFight && window._bpBigFight.sideInit) {
+        const bestOf = function(sd) {
+            const rolls = allSorted.filter(function(c){ return c.side === sd; }).map(function(c){ return initiativeRolls[c.uid]?.roll || 0; });
+            return rolls.length ? Math.max.apply(null, rolls) : 0;
+        };
+        const heroFirst = bestOf('hero') >= bestOf('narrator');
+        const heroesFirst = allSorted.filter(function(c){ return c.side === 'hero'; });
+        const othersFirst = allSorted.filter(function(c){ return c.side !== 'hero'; });
+        mainOrder = (heroFirst ? heroesFirst.concat(othersFirst) : othersFirst.concat(heroesFirst)).map(function(c){ return c.uid; });
+        bonusOrder = [];
+    }
 
     // Store initiative on combatant. Spider-Verse p.135: an ultimate Fantastic
     // (6 M 6) lets the character turn their Marvel die to an M on any single
@@ -17769,6 +17866,10 @@ function renderBonusRound() {
             <button onclick="advanceBonusTurn()"
                 style="width:auto; padding:10px 18px; font-size:0.88em; font-weight:bold; background:#5a4000; border:2px solid #ffcc44; border-radius:6px; color:#ffcc44; cursor:pointer; text-transform:uppercase; letter-spacing:1px;">
                 ▶ Next Turn
+            </button>
+            <button onclick="bpTurnHold()"
+                style="width:auto; padding:10px 14px; font-size:0.88em; font-weight:bold; background:#333; border:1px solid #ffcc44; border-radius:6px; color:#ffcc44; cursor:pointer; text-transform:uppercase; letter-spacing:1px;" title="Hold a turn (Core Ch. 4): the active character delays and acts after the next combatant">
+                ⏸ Hold
             </button>
         </div>
         ${bpTurnStripHtml(ordered[bonusTurn % bonusOrder.length] ? ordered[bonusTurn % bonusOrder.length].uid : '')}
@@ -17822,7 +17923,7 @@ function _getHealthDamageReduction(c) {
     const sturdy = Math.max(0, ...powers.map(p => { const m = String(p).match(/^Sturdy\s+(\d+)$/i); return m ? parseInt(m[1]) : 0; }));
     const flex   = Math.max(0, ...powers.map(p => { const m = String(p).match(/^Flexible Bones\s+(\d+)$/i); return m ? parseInt(m[1]) : 0; }));
     const reinf  = powers.includes('Reinforced Skeleton') ? 1 : 0;
-    return Math.max(sturdy, flex, reinf);
+    return Math.max(sturdy, flex, reinf) + ((c && c.tmBuff && c.tmBuff.kind === 'def' && c.tmBuff.round === combatRound) ? (c.tmBuff.dr || 0) : 0); // team maneuver DR
 }
 
 // Applies Healing Factor and damage-over-time conditions to the combatant
@@ -17837,6 +17938,7 @@ function applyEndOfTurnEffects(c) {
         c.currentHp = Math.min(c.maxHp, c.currentHp + Math.max(0, c.resilience||0));
         const healed = c.currentHp - before;
         if(healed > 0) msgs.push(`💚 ${c.name||c.label||c.baseName} heals ${healed} (Healing Factor)`);
+        if(healed > 0 && bpMaybeEndBleeding(c)) msgs.push(`🩸 ${c.name||c.label||c.baseName}'s Bleeding ends (recovered Health)`);
     }
 
     // Damage-over-time conditions. Damage from different conditions adds up (a character
@@ -17916,6 +18018,7 @@ function advanceBonusTurn() {
     const sk = bpSkipDownedInOrder(bonusOrder, bonusTurn);
     if(bonusOrder.length) bonusTurn = sk.idx % bonusOrder.length;
     renderBonusRound();
+    bpOnTurnStart();
     const notes = [summary, bpSkipNotice(sk.skipped)].filter(Boolean);
     if(notes.length) showNotice(notes.join('  ·  '));
 }
@@ -17947,6 +18050,10 @@ function renderMainCombat() {
                 style="width:auto; padding:10px 18px; font-size:0.88em; font-weight:bold; background:#1a6600; border:none; border-radius:6px; color:#fff; cursor:pointer; text-transform:uppercase; letter-spacing:1px;">
                 ▶ Next Turn
             </button>
+            <button onclick="bpTurnHold()"
+                style="width:auto; padding:10px 14px; font-size:0.88em; font-weight:bold; background:#333; border:1px solid #666; border-radius:6px; color:#ccc; cursor:pointer; text-transform:uppercase; letter-spacing:1px;" title="Hold a turn (Core Ch. 4): the active character delays and acts after the next combatant">
+                ⏸ Hold
+            </button>
         </div>
         ${bpTurnStripHtml(ordered[mainTurn % mainOrder.length] ? ordered[mainTurn % mainOrder.length].uid : '')}
         <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
@@ -17976,6 +18083,354 @@ async function healAllCombatants() {
     renderMainCombat();
 }
 
+// Hold a turn (Core Ch. 4): the active character delays and drops in
+// behind the next combatant in the order. Their turn ends (end-of-turn
+// effects still apply) without them acting.
+
+// ════════════════════════════════════════════════════════════════════
+// TEAM MANEUVERS (Core Ch. 4 + X-Men / Spider-Verse / Secret Wars /
+// Avengers named maneuvers). A team picks ONE maneuver for the battle.
+// Activating happens at the start of a round: each participating member
+// pays 5 Focus per maneuver level, or 1 Karma if they cannot pay the
+// Focus. The level a team can manage depends on its average rank
+// (1–2 → Level 1, 3–4 → Level 2, 5–6 → Level 3); a lower level can be
+// chosen at the lower cost. Unconscious or demoralized members do not
+// have to join. Generic maneuvers are wired into the combat math;
+// named maneuvers apply their printed effect (narrator resolves).
+// ════════════════════════════════════════════════════════════════════
+const BP_TM_GENERIC = {
+    off:   { 1: 'All members get an edge on any attack they make this round.',
+             2: 'Members can each reroll all their dice on any attack they make this round, keeping the better result.',
+             3: 'Members can each turn their Marvel die to a Fantastic success on any attack roll this round against targets of equal or higher rank.' },
+    def:   { 1: 'All members have Damage Reduction 2 for this round.',
+             2: 'All members have Damage Reduction 4 for this round.',
+             3: 'All members have Damage Reduction 8 for this round.' },
+    rally: { 1: 'All actions taken against team members have trouble this round.',
+             2: 'Each member can make a recovery roll for either Health or Focus, as if they had spent a point of Karma.',
+             3: 'A single member of the team who has been killed or shattered in this battle is healed to at least Health 0 and Focus 0.' }
+};
+const BP_TM_NAMED = [
+    { name:'Get Back Into the Fight!', book:'X-Men', side:'hero', type:'def', level:2, text:'Spend to grant a downed ally a standard action to stand up and take a non-attack action. Can be used at any time.' },
+    { name:'Fastball Special', book:'X-Men', side:'hero', type:'off', level:2, text:'With a willing partner: make a close attack with the thrown ally\'s Might, dealing damage equal to the thrown ally\'s Mighty power bonus (their Melee counts as a ×2 multiplier). A target of equal or greater size is knocked back 2 spaces.' },
+    { name:'Mental Contact', book:'X-Men', side:'hero', type:'def', level:2, text:'Instantly communicate telepathically with all team members; ignores the need for a free hand.' },
+    { name:'Take the Lead', book:'X-Men', side:'hero', type:'rally', level:2, text:'Add +1 to the team\'s initiative roll.' },
+    { name:'Mutant Power', book:'X-Men', side:'hero', type:'off', level:2, text:'When a member uses a power, they can add +1 to the damage multiplier of that power.' },
+    { name:'Together We Stand', book:'X-Men', side:'hero', type:'def', level:2, text:'When a member is hit by a close attack, another team member can take the hit instead.' },
+    { name:'No More Mr. Nice Guy', book:'X-Men', side:'hero', type:'off', level:3, text:'When a member is hit by a close attack, they can make a close attack back with the attacker\'s Might, dealing damage equal to the attacker\'s Mighty power bonus.' },
+    { name:'Once an Avenger', book:'Spider-Verse (Avengers team)', side:'hero', type:'off', level:2, text:'Captain America helps the team for the rest of the fight. Once per adventure.' },
+    { name:'Reaction Speed', book:'Spider-Verse (Champions)', side:'hero', type:'off', level:2, text:'Each member gets an additional reaction this turn.' },
+    { name:'No, You\'re the Clone', book:'Spider-Verse (Clones)', side:'hero', type:'def', level:2, text:'Two members swap places; attackers have trouble against them.' },
+    { name:'Neighborhood Heroes', book:'Spider-Verse (Daredevil)', side:'hero', type:'off', level:1, text:'Double the team\'s Swingline Speed.' },
+    { name:'Very Funny', book:'Spider-Verse (Deadpool)', side:'hero', type:'off', level:2, text:'The team gains the benefit of Wisecracker for the battle.' },
+    { name:'The World\'s Greatest', book:'Spider-Verse (Fantastic Four)', side:'hero', type:'rally', level:2, text:'The team has an edge on Ego checks to influence people.' },
+    { name:'Haul Them In', book:'Spider-Verse (Human Torch)', side:'hero', type:'off', level:2, text:'At the start of your turn, move one foe up to 5 spaces.' },
+    { name:'Summon Spider-Help', book:'Spider-Verse (Spider-Army)', side:'hero', type:'off', level:2, text:'Call in spider-help — the narrator brings in the reinforcements.' },
+    { name:'Summon a Spider-Leader', book:'Spider-Verse (Spider-Society)', side:'hero', type:'off', level:2, text:'Call in a Spider-Leader — the narrator brings them in.' },
+    { name:'Hive-Minding', book:'Spider-Verse (Symbiotes)', side:'hero', type:'off', level:2, text:'A member can copy a power from a symbiote teammate.' },
+    { name:'Life and Destiny', book:'Spider-Verse (Web-Warriors)', side:'hero', type:'def', level:2, text:'Everyone on the team can act in the bonus round. Once per adventure.' },
+    { name:'Spider-Sense Tingling', book:'Spider-Verse', side:'hero', type:'def', level:2, text:'Grant a member an edge on a Vigilance check.' },
+    { name:'Web-Swinging', book:'Spider-Verse', side:'hero', type:'rally', level:2, text:'Move the team up to 5 spaces.' },
+    { name:'Spider-Verse Team-Up', book:'Spider-Verse', side:'hero', type:'off', level:3, text:'Make a close attack with the team\'s Might, dealing damage equal to the team\'s Mighty power bonus.' },
+    { name:'Sky-Cycling!', book:'Avengers (West Coast Avengers)', side:'hero', type:'rally', level:2, text:'Summon a group of Sky-Cycles, one for each member of the team.' },
+    { name:'Battleworld Team-Up', book:'Secret Wars', side:'hero', type:'off', level:2, text:'Make a close attack with the team\'s Might, dealing damage equal to the team\'s Mighty power bonus.' },
+    { name:'Battleworld Rally', book:'Secret Wars', side:'hero', type:'rally', level:2, text:'Grant a member an edge on a check.' },
+    { name:'Battleworld Defense', book:'Secret Wars', side:'hero', type:'def', level:2, text:'Give an attacker trouble on an attack against a member.' },
+    { name:'Sinister Six', book:'Spider-Verse', side:'villain', type:'off', level:3, text:'Make a close attack with the team\'s Might, dealing damage equal to the team\'s Mighty power bonus.' },
+    { name:'Spider-Slayer', book:'Spider-Verse', side:'villain', type:'off', level:3, text:'Make a ranged attack with the team\'s Agility, dealing damage equal to the team\'s Mighty power bonus.' },
+    { name:'Enter Thanos', book:'Avengers (Black Order)', side:'villain', type:'off', level:3, text:'Call on Thanos — the narrator brings him in.' },
+    { name:'Battleworld Villain Team-Up', book:'Secret Wars', side:'villain', type:'off', level:3, text:'Make a close attack with the team\'s Might, dealing damage equal to the team\'s Mighty power bonus.' }
+];
+function bpTeamManCfg(side) {
+    window._bpTeamManCfg = window._bpTeamManCfg || {};
+    if(!window._bpTeamManCfg[side]) window._bpTeamManCfg[side] = { type: 'off', level: 1, name: '', members: null, rallyTarget: '' };
+    return window._bpTeamManCfg[side];
+}
+function bpTeamManSet(side, field, val) {
+    const cfg = bpTeamManCfg(side);
+    cfg[field] = field === 'level' ? (parseInt(val, 10) || 1) : val;
+    if(field === 'name' && val) {
+        const nm = BP_TM_NAMED.find(function(x){ return x.name === val; });
+        if(nm) { cfg.type = nm.type; cfg.level = nm.level; }
+    }
+    bpRenderTeamManPanel();
+}
+function bpTeamManMember(side, uid, on) {
+    const cfg = bpTeamManCfg(side);
+    if(!cfg.members) { cfg.members = {}; combatants.filter(function(c){ return c.side === side; }).forEach(function(c){ cfg.members[c.uid] = true; }); }
+    cfg.members[uid] = !!on;
+    bpRenderTeamManPanel();
+}
+function bpTeamRankOf(list) {
+    if(!list.length) return 0;
+    const ranks = list.map(function(c){ return parseInt(c.rank, 10) || 1; }).sort(function(a, b){ return b - a; }).slice(0, 6);
+    return Math.ceil(ranks.reduce(function(a, b){ return a + b; }, 0) / ranks.length);
+}
+function bpToggleTeamManPanel() {
+    const p = document.getElementById('bpTeamManPanel');
+    if(!p) return;
+    p.style.display = (p.style.display === 'none' || !p.style.display) ? 'block' : 'none';
+    if(p.style.display === 'block') bpRenderTeamManPanel();
+}
+function bpRenderTeamManPanel() {
+    const el = document.getElementById('bpTeamManPanel');
+    if(!el) return;
+    window._bpTeamManUsed = window._bpTeamManUsed || {};
+    let h = '<div style="font-weight:bold; color:#aad4ff; font-size:0.95em; margin-bottom:4px;">🤝 Team Maneuvers</div>'
+        + '<div style="font-size:0.78em; color:#9ab; margin-bottom:10px;">One maneuver per team per battle, activated at the start of a round. Each member who takes part pays <strong>5 Focus per level</strong> — or <strong>1 Karma</strong> if they cannot pay the Focus. Members who cannot pay get no benefit. Generic maneuvers are wired into the combat math; named maneuvers apply their printed effect (narrator resolves).</div>';
+    ['hero', 'villain'].forEach(function(side) {
+        const members = combatants.filter(function(c){ return c.side === side; });
+        const cfg = bpTeamManCfg(side);
+        const label = side === 'hero' ? '🦸 Heroes' : '🦹 Villains';
+        h += '<div style="border-top:1px solid #234; padding-top:10px; margin-top:10px;"><div style="font-weight:bold; color:#dde; font-size:0.88em; margin-bottom:6px;">' + label + '</div>';
+        if(members.length < 2) { h += '<div style="font-size:0.8em; color:#889;">A team needs at least two members on a side.</div></div>'; return; }
+        if(!cfg.members) { cfg.members = {}; members.forEach(function(c){ cfg.members[c.uid] = true; }); }
+        const selected = members.filter(function(c){ return cfg.members[c.uid]; });
+        const avg = bpTeamRankOf(selected);
+        const maxLevel = avg <= 2 ? 1 : avg <= 4 ? 2 : 3;
+        const level = Math.min(cfg.level || 1, maxLevel);
+        const named = BP_TM_NAMED.filter(function(x){ return x.side === side; });
+        const sel = 'padding:6px 8px; background:#0d1a24; border:1px solid #2a5a7a; border-radius:5px; color:#dde; font-size:0.82em;';
+        h += '<div style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:7px;">' + members.map(function(c) {
+            return '<label style="font-size:0.78em; color:#cde; background:#101c26; border:1px solid #2a4258; border-radius:5px; padding:4px 8px; cursor:pointer;"><input type="checkbox" ' + (cfg.members[c.uid] ? 'checked ' : '') + 'onchange="bpTeamManMember(\'' + side + '\',\'' + c.uid + '\',this.checked)"> ' + _bpEsc(c.label || c.baseName) + ' (R' + (c.rank || 1) + ')</label>';
+        }).join('') + '</div>';
+        h += '<div style="font-size:0.78em; color:#9ab; margin-bottom:7px;">Team Rank (average) ' + avg + ' → maneuvers up to Level ' + maxLevel + ' · cost ' + (5 * level) + ' Focus per member at Level ' + level + '</div>';
+        h += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:7px;">'
+            + '<select onchange="bpTeamManSet(\'' + side + '\',\'name\',this.value)" style="' + sel + '"><option value="">Generic maneuver (Core)</option>'
+            + named.map(function(x){ return '<option value="' + x.name.replace(/"/g, '&quot;') + '"' + (cfg.name === x.name ? ' selected' : '') + '>' + x.name + ' — ' + x.book + ' (' + x.type + ' ' + x.level + ')</option>'; }).join('') + '</select>'
+            + '<select onchange="bpTeamManSet(\'' + side + '\',\'type\',this.value)" style="' + sel + '"' + (cfg.name ? ' disabled' : '') + '>'
+            + ['off', 'def', 'rally'].map(function(t){ return '<option value="' + t + '"' + (cfg.type === t ? ' selected' : '') + '>' + (t === 'off' ? 'Offensive' : t === 'def' ? 'Defensive' : 'Rally') + '</option>'; }).join('') + '</select>'
+            + '<select onchange="bpTeamManSet(\'' + side + '\',\'level\',this.value)" style="' + sel + '"' + (cfg.name ? ' disabled' : '') + '>'
+            + [1, 2, 3].map(function(l){ return '<option value="' + l + '"' + (level === l ? ' selected' : '') + (l > maxLevel ? ' disabled' : '') + '>Level ' + l + '</option>'; }).join('') + '</select></div>';
+        const nmObj = cfg.name ? BP_TM_NAMED.find(function(x){ return x.name === cfg.name; }) : null;
+        h += '<div style="font-size:0.8em; color:#cde; background:#0d1a24; border:1px solid #2a4258; border-radius:6px; padding:7px 10px; margin-bottom:8px;">' + (nmObj ? '<strong>' + _bpEsc(nmObj.name) + '</strong> — ' + _bpEsc(nmObj.text) : _bpEsc(BP_TM_GENERIC[cfg.type][level])) + '</div>';
+        if(!cfg.name && cfg.type === 'rally' && level === 3) {
+            const fallen = members.filter(function(c){ return c.currentHp <= -(c.maxHp || 0) || c.currentFp <= -(c.maxFp || 0); });
+            h += '<div style="margin-bottom:8px;"><label style="font-size:0.8em; color:#cde;">Restore: <select onchange="bpTeamManSet(\'' + side + '\',\'rallyTarget\',this.value)" style="' + sel + '"><option value="">— pick a killed/shattered member —</option>'
+                + fallen.map(function(c){ return '<option value="' + c.uid + '"' + (cfg.rallyTarget === c.uid ? ' selected' : '') + '>' + _bpEsc(c.label || c.baseName) + '</option>'; }).join('') + '</select></label></div>';
+        }
+        if(window._bpTeamManUsed[side]) {
+            h += '<div style="font-size:0.82em; color:#998;">Already used this battle: <strong style="color:#cc9;">' + _bpEsc(window._bpTeamManUsed[side]) + '</strong></div>';
+        } else {
+            h += '<button onclick="bpTeamManActivate(\'' + side + '\')" style="padding:9px 14px; font-size:0.85em; font-weight:bold; background:#0a3a5a; border:1px solid #1a6a9a; border-radius:6px; color:#aad4ff; cursor:pointer;">Activate maneuver (start of round)</button>';
+        }
+        const r2 = window._bpTeamManRally2;
+        if(r2 && r2.side === side && r2.members.length) {
+            h += '<div style="margin-top:9px; font-size:0.8em; color:#cde;">Rally 2 recovery rolls still available:</div><div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:5px;">'
+                + r2.members.map(function(uid) {
+                    const c = combatants.find(function(x){ return x.uid === uid; });
+                    if(!c) return '';
+                    return '<button onclick="bpTeamManRallyRoll(\'' + bpSafeUid(c) + '\')" style="padding:7px 11px; font-size:0.8em; background:#14532d; border:1px solid #44aa66; border-radius:6px; color:#bbffcc; cursor:pointer;">🎲 Recovery — ' + _bpEsc(c.label || c.baseName) + '</button>';
+                }).join('') + '</div>';
+        }
+        h += '</div>';
+    });
+    el.innerHTML = h;
+}
+function bpTeamManActivate(side) {
+    const cfg = bpTeamManCfg(side);
+    const members = combatants.filter(function(c){ return c.side === side; });
+    const selected = members.filter(function(c){ return !cfg.members || cfg.members[c.uid]; });
+    const standing = selected.filter(function(c){ return c.currentHp > 0 && c.currentFp > -(c.maxFp || 0); });
+    if(standing.length < 2) { if(typeof showNotice === 'function') showNotice('🤝 A team maneuver needs at least two members able to take part (not down, dead or shattered).'); return; }
+    const avg = bpTeamRankOf(selected);
+    const maxLevel = avg <= 2 ? 1 : avg <= 4 ? 2 : 3;
+    const nmObj = cfg.name ? BP_TM_NAMED.find(function(x){ return x.name === cfg.name; }) : null;
+    const level = nmObj ? nmObj.level : Math.min(cfg.level || 1, maxLevel);
+    const cost = 5 * level;
+    const paid = [], how = {};
+    standing.forEach(function(c) {
+        if(c.currentFp >= cost) { c.currentFp -= cost; paid.push(c); how[c.uid] = 'fp'; }
+        else if((c.karma || 0) >= 1) { c.karma -= 1; paid.push(c); how[c.uid] = 'karma'; }
+    });
+    if(paid.length < 2) {
+        paid.forEach(function(c){ if(how[c.uid] === 'fp') c.currentFp += cost; else c.karma += 1; });
+        if(typeof showNotice === 'function') showNotice('🤝 Not enough members could pay the ' + cost + ' Focus (or 1 Karma) — the maneuver fizzles and payments are refunded.');
+        return;
+    }
+    const label = nmObj ? nmObj.name : (cfg.type === 'off' ? 'Offensive' : cfg.type === 'def' ? 'Defensive' : 'Rally') + ' ' + level;
+    window._bpTeamManUsed = window._bpTeamManUsed || {};
+    window._bpTeamManUsed[side] = label;
+    if(nmObj) {
+        if(nmObj.name === 'Reaction Speed') paid.forEach(function(c){ c.tmExtraReaction = combatRound; });
+    } else if(cfg.type === 'rally' && level === 2) {
+        window._bpTeamManRally2 = { side: side, members: paid.map(function(c){ return c.uid; }) };
+    } else if(cfg.type === 'rally' && level === 3) {
+        const t = combatants.find(function(x){ return x.uid === cfg.rallyTarget; });
+        if(t) {
+            t.currentHp = Math.max(t.currentHp, 0);
+            t.currentFp = Math.max(t.currentFp, 0);
+            t.lastEvent = '🤝 Team Maneuver (Rally 3): restored to Health ' + t.currentHp + ' and Focus ' + t.currentFp + '.';
+        }
+    } else {
+        paid.forEach(function(c){ c.tmBuff = { kind: cfg.type, val: level, dr: cfg.type === 'def' ? [0, 2, 4, 8][level] : 0, round: combatRound, label: label }; });
+    }
+    paid.forEach(function(c){ c.lastEvent = '🤝 Team Maneuver: ' + label + ' (paid ' + (how[c.uid] === 'fp' ? cost + ' Focus' : '1 Karma') + ').'; });
+    if(typeof showNotice === 'function') showNotice('🤝 ' + label + ' activated — ' + paid.length + ' members take part.');
+    bpRenderTeamManPanel();
+    if(typeof renderActiveCombat === 'function') renderActiveCombat();
+}
+function bpTeamManRallyRoll(safeUid) {
+    const r2 = window._bpTeamManRally2;
+    bpTurnStart(safeUid, 'recovery', 'Recovery', 'resilience');
+    if(window._bpTurnSel) window._bpTurnSel.freeRecovery = true;
+    if(r2) {
+        const c = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
+        if(c) r2.members = r2.members.filter(function(u){ return u !== c.uid; });
+    }
+    bpRenderTeamManPanel();
+}
+function bpTurnTeamReroll() {
+    const sel = window._bpTurnSel; if(!sel) return;
+    const actor = combatants.find(function(x){ return x.uid === sel.actorUid; });
+    if(!actor) return;
+    const before = { d1: sel.d1, d2: sel.d2, marvelDie: sel.marvelDie, rerolls: (sel.rerolls || []).slice(), total: bpRollTotal(actor, sel) };
+    bpProgramRoll();
+    if(bpRollTotal(actor, sel) < before.total) { sel.d1 = before.d1; sel.d2 = before.d2; sel.marvelDie = before.marvelDie; sel.rerolls = before.rerolls; }
+    bpTurnRenderResolve();
+}
+// Self-Sacrifice (Secret Wars p.164): declared while out of Focus or
+// demoralized. The hero is no longer demoralized until the battle ends,
+// the Focus spending cap is lifted, and they may spend Focus below 0 —
+// each point spent that way costs 1 Health at the end of the battle
+// (settled in bpSettleSacrifice).
+function bpSelfSacrifice(safeUid) {
+    const c = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
+    if(!c) return;
+    c.selfSacrifice = true;
+    c.sacrificeDebt = c.sacrificeDebt || 0;
+    c.lastEvent = '🩸 Self-Sacrifice declared — no longer demoralized until the battle ends; Focus can be spent below 0, and each point spent costs 1 Health at the end of the battle (ignoring Damage Reduction).';
+    if(typeof renderActiveCombat === 'function') renderActiveCombat();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MENTAL DUELS (X-Men Expansion pp.138–141). Telepaths force a psychic
+// link (Logic check vs the target's Vigilance defense, with trouble;
+// failure means no retry against that foe that day; a Fantastic success
+// makes the link unbreakable for the day). Linked duelists are fully
+// committed and cannot perceive the real world. Taking Health damage
+// forces a Vigilance check vs TN = the damage to stay in. Only Mental
+// Shelter, Mind Interrogation, Mind Reading, Telepathic Blast and
+// Uncanny 1–4 work inside; everyone gets Telepathic Blast. Disengaging
+// is a standard action: a Vigilance check against each opponent's
+// Vigilance defense — and each foe may make one last attack as a
+// reaction either way. The loser is demoralized; the victor has an edge
+// on Command, Domination, Edit Memory, Memory Blip, Orders and
+// Telepathic Possession against the loser.
+// ════════════════════════════════════════════════════════════════════
+function bpToggleMentalPanel() {
+    const p = document.getElementById('bpMentalPanel');
+    if(!p) return;
+    p.style.display = (p.style.display === 'none' || !p.style.display) ? 'block' : 'none';
+    if(p.style.display === 'block') bpRenderMentalPanel();
+}
+function bpMentalSel(uid, on) {
+    window._bpMentalSel = window._bpMentalSel || {};
+    window._bpMentalSel[uid] = !!on;
+}
+function bpRenderMentalPanel() {
+    const el = document.getElementById('bpMentalPanel');
+    if(!el) return;
+    window._bpMentalSel = window._bpMentalSel || {};
+    let h = '<div style="font-weight:bold; color:#ddaaff; font-size:0.95em; margin-bottom:4px;">🧠 Mental Duel</div>'
+        + '<div style="font-size:0.78em; color:#b9a; margin-bottom:10px;">To start: the initiator makes a Logic check vs the target\'s Vigilance defense, with trouble (roll it with the normal action tools). On a failure they cannot try that foe again today; on a Fantastic success the link cannot be broken today. Duelists are fully committed and cannot perceive the real world. Inside the duel only Mental Shelter, Mind Interrogation, Mind Reading, Telepathic Blast and Uncanny 1–4 work — Telepathic Blast appears in every duelist\'s action list. Taking Health damage forces a Vigilance check vs TN = the damage to stay in (the app flags this on the damage result).</div>';
+    const duelists = combatants.filter(function(c){ return c.mentalDuel; });
+    if(duelists.length) {
+        h += '<div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">' + duelists.map(function(c) {
+            const btn = 'width:auto; padding:5px 10px; font-size:0.76em; border-radius:5px; cursor:pointer;';
+            return '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:0.82em; color:#ecd;">🧠 <strong>' + _bpEsc(c.label || c.baseName) + '</strong>'
+                + '<button onclick="bpMentalDisengage(\'' + bpSafeUid(c) + '\')" style="' + btn + 'background:#2a1a3a; border:1px solid #7a4a9a; color:#ddaaff;">Disengage (standard action)</button>'
+                + '<button onclick="bpMentalConcede(\'' + bpSafeUid(c) + '\')" style="' + btn + 'background:#3a0d0d; border:1px solid #883333; color:#ff9999;">Concede</button></div>';
+        }).join('') + '</div>';
+    }
+    h += '<div style="font-size:0.8em; color:#cde; margin-bottom:6px;">Link combatants into a duel (2 or more):</div>'
+        + '<div style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px;">' + combatants.map(function(c) {
+            return '<label style="font-size:0.78em; color:#ecd; background:#1c1026; border:1px solid #4a2a5a; border-radius:5px; padding:4px 8px; cursor:pointer;"><input type="checkbox" ' + (window._bpMentalSel[c.uid] ? 'checked ' : '') + 'onchange="bpMentalSel(\'' + c.uid + '\',this.checked)"> ' + _bpEsc(c.label || c.baseName) + '</label>';
+        }).join('') + '</div>'
+        + '<button onclick="bpMentalLink()" style="padding:9px 14px; font-size:0.85em; font-weight:bold; background:#3a0a5a; border:1px solid #7a1a9a; border-radius:6px; color:#ddaaff; cursor:pointer;">Link selected into a mental duel</button>';
+    el.innerHTML = h;
+}
+function bpMentalLink() {
+    const sel = Object.keys(window._bpMentalSel || {}).filter(function(u){ return window._bpMentalSel[u]; });
+    const cs = combatants.filter(function(c){ return sel.indexOf(c.uid) !== -1; });
+    if(cs.length < 2) { if(typeof showNotice === 'function') showNotice('🧠 A mental duel needs at least two combatants linked.'); return; }
+    const gid = 'md' + Date.now();
+    cs.forEach(function(c) {
+        c.mentalDuel = gid;
+        c.lastEvent = '🧠 Entered a mental duel — fully committed; cannot perceive the real world, and their body is extremely vulnerable.';
+    });
+    window._bpMentalSel = {};
+    if(typeof showNotice === 'function') showNotice('🧠 Mental duel linked: ' + cs.map(function(c){ return c.label || c.baseName; }).join(' vs ') + '.');
+    bpRenderMentalPanel();
+    if(typeof renderActiveCombat === 'function') renderActiveCombat();
+}
+function bpMentalDisengage(safeUid) {
+    const c = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
+    if(!c || !c.mentalDuel) return;
+    const others = combatants.filter(function(x){ return x.mentalDuel === c.mentalDuel && x.uid !== c.uid; });
+    if(!others.length) { c.mentalDuel = null; bpRenderMentalPanel(); if(typeof renderActiveCombat === 'function') renderActiveCombat(); return; }
+    const defs = others.map(function(o){ return bpDefense(o, 'vigilance'); });
+    bpPromptText('🧠 Disengage — ' + (c.label || c.baseName),
+        'Enter their Vigilance check total. They must meet or beat every opponent\'s Vigilance defense (' + defs.join(', ') + ') to break away. Win or lose, each foe may make one last attack against them as a reaction.',
+        function(val) {
+            const total = parseInt(val, 10);
+            if(isNaN(total)) return;
+            if(defs.every(function(d){ return total >= d; })) {
+                c.mentalDuel = null;
+                c.lastEvent = '🧠 Disengaged from the mental duel (' + total + ' vs ' + defs.join(', ') + ') — foes may make one last attack as a reaction.';
+            } else {
+                c.lastEvent = '🧠 Failed to disengage from the mental duel (' + total + ' vs ' + defs.join(', ') + ') — they remain in the duel until next round; foes may make one last attack as a reaction.';
+            }
+            bpRenderMentalPanel();
+            if(typeof renderActiveCombat === 'function') renderActiveCombat();
+        });
+}
+function bpMentalConcede(safeUid) {
+    const c = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
+    if(!c || !c.mentalDuel) return;
+    const gid = c.mentalDuel;
+    c.mentalDuel = null;
+    c.duelLost = true;
+    c.lastEvent = '🧠 Conceded the mental duel and is demoralized by the loss. The victor can use Command, Domination, Edit Memory, Memory Blip, Orders or Telepathic Possession against them with an edge.';
+    const rest = combatants.filter(function(x){ return x.mentalDuel === gid; });
+    if(rest.length === 1) {
+        rest[0].mentalDuel = null;
+        rest[0].lastEvent = '🧠 Won the mental duel.';
+    }
+    bpRenderMentalPanel();
+    if(typeof renderActiveCombat === 'function') renderActiveCombat();
+}
+
+function bpTurnHold() {
+    const phase = combatPhase;
+    const order = (phase === 'bonus' ? bonusOrder : mainOrder).slice();
+    if(!order || order.length < 2) { if(typeof showNotice === 'function') showNotice('⏸ No one to hold for — only one combatant in the order.'); return; }
+    let turn = phase === 'bonus' ? bonusTurn : mainTurn;
+    const idx = ((turn % order.length) + order.length) % order.length;
+    const uid = order[idx];
+    const c = combatants.find(function(x){ return x.uid === uid; });
+    const summary = c ? applyEndOfTurnEffects(c) : '';
+    order.splice(idx, 1);
+    order.splice(Math.min(idx + 1, order.length), 0, uid);
+    const sk = bpSkipDownedInOrder(order, idx);
+    if(phase === 'bonus') { bonusOrder = order; bonusTurn = sk.idx; renderBonusRound(); }
+    else { mainOrder = order; mainTurn = sk.idx; renderMainCombat(); }
+    const notes = [summary, bpSkipNotice(sk.skipped), '⏸ ' + (c ? (c.label || c.baseName) : 'Character') + ' holds their turn — they will act after the next combatant.'].filter(Boolean);
+    if(notes.length && typeof showNotice === 'function') showNotice(notes.join('  ·  '));
+    bpOnTurnStart();
+}
+// Start-of-turn housekeeping for whoever is now active: a thrown shield
+// returns (Avengers shield rules), clearing the Shield Out state.
+function bpOnTurnStart() {
+    const order = combatPhase === 'bonus' ? bonusOrder : mainOrder;
+    const turn = combatPhase === 'bonus' ? bonusTurn : mainTurn;
+    if(!order || !order.length) return;
+    const uid = order[((turn % order.length) + order.length) % order.length];
+    const c = combatants.find(function(x){ return x.uid === uid; });
+    if(c && (c.conditions || []).some(function(x){ return String(x).toLowerCase() === 'shield out'; })) {
+        c.conditions = c.conditions.filter(function(x){ return String(x).toLowerCase() !== 'shield out'; });
+        if(typeof renderActiveCombat === 'function') renderActiveCombat();
+    }
+}
 function advanceMainTurn() {
     // Apply Healing Factor / DoT conditions to the combatant whose turn is ending
     const endingUid = mainOrder[mainTurn % mainOrder.length];
@@ -17987,6 +18442,7 @@ function advanceMainTurn() {
     const sk = bpSkipDownedInOrder(mainOrder, mainTurn);
     mainTurn = sk.idx;
     renderMainCombat();
+    bpOnTurnStart();
     const notes = [summary, bpSkipNotice(sk.skipped)].filter(Boolean);
     if(notes.length) showNotice(notes.join('  ·  '));
     // Scroll active combatant into view
@@ -17994,7 +18450,23 @@ function advanceMainTurn() {
     if(activeEl) activeEl.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
+// Self-Sacrifice (Secret Wars p.164): at the end of the battle, each
+// point of Focus spent below 0 costs 1 Health, ignoring Damage Reduction.
+function bpSettleSacrifice() {
+    const lines = [];
+    combatants.forEach(function(c) {
+        const debt = c.sacrificeDebt || 0;
+        if(debt > 0) {
+            c.currentHp = Math.max(-(c.maxHp || 0), c.currentHp - debt);
+            lines.push((c.label || c.baseName) + ' pays ' + debt + ' Health for their self-sacrifice. If they survive, they must make an Absurd Resilience check: fail and they are killed anyhow; succeed and their Health falls to 0 and they fall unconscious.');
+        }
+        c.sacrificeDebt = 0;
+        c.selfSacrifice = false;
+    });
+    if(lines.length && typeof showNotice === 'function') showNotice('🩸 ' + lines.join(' '));
+}
 function endCombat() {
+    bpSettleSacrifice();
     combatPhase = 'lobby';
     initiativeRolls = {};
     bonusOrder = [];
@@ -18003,7 +18475,7 @@ function endCombat() {
     mainTurn = 0;
     combatTurn = -1;
     initiativeOrder = [];
-    combatants.forEach(function(c){ c.usedPowers = []; c.lastEvent = ''; });
+    combatants.forEach(function(c){ c.usedPowers = []; c.lastEvent = ''; c.reactionsUsed = 0; c.mentalDuel = null; c.tmBuff = null; });
     combatPlot = 0; combatKarma = 0; combatRound = 1;
     renderActiveCombat();
 }
@@ -18039,7 +18511,8 @@ function renderCombatCard(c, idx, isActive, phase) {
                 : `<span style="color:#2a2a2a; font-size:1.15em; flex-shrink:0;">·</span>`}
             <span style="font-weight:bold; font-size:0.97em; ${nameStyle} flex:1; min-width:80px;">${c.label}</span>
             <span style="font-size:0.67em; color:#445; flex-shrink:0;">Init: <strong style="color:#667;">${c.initiative || '—'}</strong></span>
-            ${isDead ? `<span style="font-size:0.67em; background:#550000; color:#ff6666; border-radius:3px; padding:1px 7px; font-weight:bold; flex-shrink:0;">KO</span>` : ''}
+            ${isDead && c.currentHp <= -(c.maxHp || 0) ? `<span style="font-size:0.67em; background:#000; color:#ff4444; border:1px solid #ff4444; border-radius:3px; padding:1px 7px; font-weight:bold; flex-shrink:0;">💀 DEAD</span>` : isDead ? `<span style="font-size:0.67em; background:#550000; color:#ff6666; border-radius:3px; padding:1px 7px; font-weight:bold; flex-shrink:0;">KO</span>` : ''}
+            ${c.currentFp <= -(c.maxFp || 0) ? `<span style="font-size:0.67em; background:#1a0033; color:#cc88ff; border:1px solid #7744aa; border-radius:3px; padding:1px 7px; font-weight:bold; flex-shrink:0;">💔 SHATTERED</span>` : ''}
         </div>
         ${(c.conditions||[]).length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px;">${(c.conditions||[]).map(cond => {
             const cd = _CONDITIONS.find(x=>x.name===cond);
@@ -18047,6 +18520,9 @@ function renderCombatCard(c, idx, isActive, phase) {
             const icon = cd ? cd.icon : '⚠';
             return `<span style="font-size:0.62em;font-weight:bold;background:${col};color:#fff;border-radius:3px;padding:1px 6px;">${icon} ${cond}</span>`;
         }).join('')}</div>` : ''}
+        ${c.mentalDuel ? `<div style="font-size:0.7em;color:#ddaaff;background:#1a0a24;border:1px solid #5a2a7a;border-radius:4px;padding:4px 8px;margin-bottom:8px;">🧠 Mental Duel — committed: cannot perceive the real world, and their body is extremely vulnerable</div>` : ''}
+        ${c.tmBuff && c.tmBuff.round === combatRound ? `<div style="font-size:0.7em;color:#aad4ff;background:#0a1a24;border:1px solid #2a5a7a;border-radius:4px;padding:4px 8px;margin-bottom:8px;">🤝 Team Maneuver active this round (${c.tmBuff.label || c.tmBuff.kind})</div>` : ''}
+        ${c.selfSacrifice ? `<div style="font-size:0.7em;color:#ffaaaa;background:#240a0a;border:1px solid #7a2a2a;border-radius:4px;padding:4px 8px;margin-bottom:8px;">🩸 Self-Sacrifice — may spend Focus below 0; debt so far: ${c.sacrificeDebt || 0} Health, settled at the end of the battle</div>` : ''}
         ${c.lastEvent ? `<div style="font-size:0.7em;color:#ffcc88;background:#1a1400;border:1px solid #4a3800;border-radius:4px;padding:4px 8px;margin-bottom:8px;">🕐 ${c.lastEvent}</div>` : ''}
 
         <!-- HP bar -->
@@ -18072,6 +18548,11 @@ function renderCombatCard(c, idx, isActive, phase) {
             </div>
         </div>
 
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+            <span style="font-size:0.72em; color:#aabbdd;">⚡ Reactions: <strong>${c.reactionsUsed || 0}/${bpReactionMax(c)}</strong> this round</span>
+            <button onclick="bpUseReaction('${safeUid}')" style="width:auto; padding:4px 10px; font-size:0.72em; background:#1a1428; border:1px solid #554488; border-radius:5px; color:#bb99ff; cursor:pointer;">Use reaction…</button>
+            ${!c.selfSacrifice && (c.currentFp <= 0 || (c.conditions || []).some(function(x){ return String(x).toLowerCase() === 'demoralized'; })) ? `<button onclick="bpSelfSacrifice('${safeUid}')" style="width:auto; padding:4px 10px; font-size:0.72em; background:#2a0d0d; border:1px solid #883333; border-radius:5px; color:#ff9999; cursor:pointer;" title="Self-Sacrifice (Secret Wars p.164): declare while out of Focus or demoralized — no longer demoralized until the battle ends, the Focus cap is lifted, and Focus can be spent below 0; each point spent costs 1 Health at the end of the battle">🩸 Self-Sacrifice</button>` : ''}
+        </div>
         ${bpSteppers(c.uid,'fp')}
         <!-- Action buttons: 2 rows -->
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
@@ -18142,16 +18623,22 @@ function ccPrompt(safeUid, resource, direction) {
             if(isDmg) {
                 // Damage always accounts for the target's DR (Ben, 2026-11-15).
                 const r = bpManualDamageAfterDR(c, amount, 'hp');
-                c.currentHp = Math.max(0, c.currentHp - r.actual);
+                c.currentHp = Math.max(-(c.maxHp || 0), c.currentHp - r.actual);
                 c.lastEvent = '💥 Took ' + r.actual + ' Health damage' + (r.blocked > 0 ? ' — ' + r.blocked + ' absorbed by DR ' + r.dr : '') + '.';
+                if(c.currentHp <= -(c.maxHp || 0)) c.lastEvent += ' 💀 Dead.';
+                if(c.currentHp <= 0) bpEndConcentration(c, 'downed');
             } else {
+                const beforeHp = c.currentHp;
                 c.currentHp = Math.min(c.maxHp, c.currentHp + amount);
+                if(c.currentHp > beforeHp && bpMaybeEndBleeding(c)) c.lastEvent = '🩸 Bleeding ends — recovered Health.';
             }
         } else {
             if(isDmg) {
                 const r = bpManualDamageAfterDR(c, amount, 'fp');
-                c.currentFp = Math.max(0, c.currentFp - r.actual);
+                c.currentFp = Math.max(-(c.maxFp || 0), c.currentFp - r.actual);
                 c.lastEvent = '💥 Took ' + r.actual + ' Focus damage' + (r.blocked > 0 ? ' — ' + r.blocked + ' absorbed by Uncanny ' + r.dr : '') + '.';
+                if(c.currentFp <= -(c.maxFp || 0)) c.lastEvent += ' 💔 Shattered.';
+                if(c.currentFp <= 0) bpEndConcentration(c, 'demoralized at 0 Focus');
             } else {
                 c.currentFp = Math.min(c.maxFp, c.currentFp + amount);
             }
@@ -18443,8 +18930,11 @@ function bpAbilityScore(c, ab) {
 }
 function bpCombatMult(c, ab) {
     const rank = parseInt(c && c.rank, 10) || 1;
-    return rank + bpCombatPowerBonus(c && c.powers, BP_DMG_BOOSTERS[ab] || [])
-        + ((c && c.iconicDmg && c.iconicDmg[ab]) || 0);
+    // Core damage rule: damage-multiplier bonuses never stack — only the
+    // single largest bonus counts (power bonus vs iconic weapon bonus).
+    const bonus = Math.max(bpCombatPowerBonus(c && c.powers, BP_DMG_BOOSTERS[ab] || []),
+        (c && c.iconicDmg && c.iconicDmg[ab]) || 0);
+    return rank + bonus;
 }
 function bpFocusDR(c) { // Uncanny N reduces the multiplier of Focus attacks
     return bpCombatPowerBonus(c && c.powers, ['Uncanny']);
@@ -18602,11 +19092,14 @@ function bpTurnActionsHtml(c, inModal) {
     const declBtn = 'flex:1 1 70px; padding:7px 4px; font-size:0.76em; background:#1c1c1c; border:1px solid #444; border-radius:6px; color:#bbb; cursor:pointer;';
     const declares = ['Move', 'Dodge', 'Escape', 'Grab', 'Help'].map(function(d) {
         return '<button onclick="bpTurnStart(\'' + safe + '\',\'declare\',\'' + d + '\',\'melee\')" style="' + declBtn + '">' + d + '</button>';
-    }).join('');
+    }).join('') + '<button onclick="bpTurnStart(\'' + safe + '\',\'recovery\',\'Recovery\',\'resilience\')" style="' + declBtn + '" title="Recovery (Core Ch. 4): spend 1 Karma and make a Resilience or Vigilance check vs TN 10; on a success recover (Marvel die × rank) + ability, doubled on a Fantastic success">💚 Recovery</button>';
     const usable = (c.powers || []).map(function(p, idx) { return { p: p, idx: idx }; }).filter(function(x) {
         const pd = (typeof powersData !== 'undefined' && powersData[x.p]) || null;
         return pd && !/^passive$/i.test((pd.action || '').trim());
     });
+    // Mental duels (X-Men): everyone in a duel can use Telepathic Blast,
+    // even if it is not on their sheet.
+    if(c.mentalDuel && !(c.powers || []).includes('Telepathic Blast')) usable.push({ p: 'Telepathic Blast', idx: -1 });
     const usedSet = Array.isArray(c.usedPowers) ? c.usedPowers : [];
     const powerRows = usable.map(function(x) {
         const pd = powersData[x.p];
@@ -18651,6 +19144,7 @@ function bpTurnStart(safeUid, kind, name, ability) {
         focusSpent: 0, resource: 'hp', damageMode: kind === 'attack',
         total: 9, fantastic: false,
         edgeNet: 0, edgeTouched: false, edgeNotes: [], rerolls: [] };
+    if(kind === 'recovery') { sel.checkMode = true; sel.tnDefault = 10; sel.recoveryField = 'hp'; }
     if(kind === 'power') {
         const pd = (typeof powersData !== 'undefined' && powersData[name]) || null;
         const fx = bpPowerFx(name);
@@ -18700,7 +19194,8 @@ function bpDefenseBonus(c, stat) {
 // condition text: an Asleep character's defenses are all 10.
 function bpDefense(c, stat) {
     const conds = ((c && c.conditions) || []).map(function(x){ return String(x).toLowerCase(); });
-    if(conds.indexOf('asleep') !== -1) return 10;
+    if(conds.indexOf('asleep') !== -1 || conds.indexOf('unconscious') !== -1) return 10;
+    if(c && c.currentHp <= 0) return 10; // downed = unconscious (Core Ch. 4)
     return 10 + bpAbilityScore(c, stat) + bpDefenseBonus(c, stat);
 }
 function bpDefaultTN(target, ability) { return bpDefense(target, ability); }
@@ -18793,10 +19288,13 @@ function bpEdgeSuggestion(actor, sel) {
     const has = function(c, nm) { return ((c && c.conditions) || []).some(function(x){ return String(x).toLowerCase() === nm; }); };
     if(has(actor, 'stunned')) { troubles++; notes.push('you are Stunned — trouble on your actions'); }
     if(has(actor, 'demoralized')) { troubles++; notes.push('you are Demoralized — trouble on all action checks'); }
+    if(actor && actor.currentFp <= 0 && !has(actor, 'demoralized') && !actor.selfSacrifice) { troubles++; notes.push('at 0 Focus — Demoralized: trouble on all action checks'); }
+    if(has(actor, 'deafened') && sel.ability === 'vigilance') { troubles++; notes.push('you are Deafened — trouble on checks that depend on hearing'); }
     if(has(actor, 'blinded')) { troubles++; notes.push('you are Blinded — trouble on checks that need line of sight'); }
     if(has(actor, 'exhausted')) { troubles++; notes.push('you are Exhausted — trouble on all actions'); }
     if(has(actor, 'prone') && sel.ability === 'melee') { troubles++; notes.push('you are Prone — trouble on Melee attacks'); }
     if(has(actor, 'pinned') && (sel.ability === 'melee' || sel.ability === 'agility')) { troubles++; notes.push('you are Pinned — trouble on Melee and Agility checks'); }
+    if(sel.damageMode && actor && actor.tmBuff && actor.tmBuff.kind === 'off' && actor.tmBuff.val === 1 && actor.tmBuff.round === combatRound) { edges++; notes.push('Team Maneuver (Offensive 1) — edge on attacks this round'); }
     if(sel.damageMode) {
         let tEdge = '', tTrouble = '';
         (sel.targets || []).forEach(function(u) {
@@ -18807,6 +19305,7 @@ function bpEdgeSuggestion(actor, sel) {
             else if(has(t, 'prone') && sel.ability === 'melee' && !tEdge) tEdge = 'a target is Prone — close attacks against them have an edge';
             if(has(t, 'prone') && sel.ability !== 'melee' && !tTrouble) tTrouble = 'a target is Prone — ranged attacks against them have trouble';
             if(has(t, 'grabbed') && !tTrouble) tTrouble = 'a target is Grabbed — attacks against the entangled pair have trouble (an edge instead if the attacker does not care who gets hit)';
+            if(t.tmBuff && t.tmBuff.kind === 'rally' && t.tmBuff.val === 1 && t.tmBuff.round === combatRound && !tTrouble) tTrouble = 'a target is covered by a team maneuver (Rally 1) — actions against them have trouble';
         });
         if(tEdge) { edges++; notes.push(tEdge); }
         if(tTrouble) { troubles++; notes.push(tTrouble); }
@@ -18824,8 +19323,17 @@ function bpResolveOutcome(actor, target, sel) {
     const e = bpEffDice(sel);
     let success = total >= tn;
     if(e.ultimate) success = true;
+    // Close attacks automatically hit a helpless target: asleep, paralyzed,
+    // unconscious or downed (Core Ch. 4; Avengers Asleep).
+    if(!success && sel.ability === 'melee' && target) {
+        const tc = ((target.conditions) || []).map(function(x){ return String(x).toLowerCase(); });
+        if(tc.indexOf('asleep') !== -1 || tc.indexOf('paralyzed') !== -1 || tc.indexOf('unconscious') !== -1 || target.currentHp <= 0) success = true;
+    }
     const fDie = sel.rollMode === 'manual' ? !!sel.fantastic : e.m === 6;
-    const fantastic = success && fDie;
+    let fantastic = success && fDie;
+    // Team maneuver, Offensive 3: turn the Marvel die to a Fantastic
+    // success on attacks against targets of equal or higher rank.
+    if(success && !fantastic && actor && actor.tmBuff && actor.tmBuff.kind === 'off' && actor.tmBuff.val === 3 && actor.tmBuff.round === combatRound && target && (parseInt(target.rank, 10) || 1) >= (parseInt(actor.rank, 10) || 1)) fantastic = true;
     return { total: total, tn: tn, success: success, fantastic: fantastic, ultimate: !!e.ultimate,
         fantasticFail: !success && fDie,
         outcome: fantastic ? 'fantastic' : (success ? 'success' : 'miss') };
@@ -18920,6 +19428,21 @@ function bpTurnRenderResolve() {
                 + _bpEsc(pd.effect || '') + '</div>';
         }
     }
+    if(sel.kind === 'recovery') {
+        const fld = sel.recoveryField === 'fp' ? 'fp' : 'hp';
+        const fb = 'flex:1; padding:7px 4px; font-size:0.78em; font-weight:bold; border-radius:6px; cursor:pointer;';
+        html += '<div style="font-size:0.82em; color:#cde; background:#0d1a0d; border:1px solid #2c4a2c; border-radius:6px; padding:8px 10px; margin-bottom:8px;">'
+            + '<strong>Recovery</strong> — spend 1 Karma, Resilience or Vigilance check vs TN 10. On a success, recover (Marvel die &times; rank) + ability; a Fantastic success doubles it. The Karma is spent either way.'
+            + '<div style="display:flex; gap:6px; margin-top:7px;">'
+            + '<button onclick="bpTurnSet(\'recoveryField\',\'hp\')" style="' + fb + (fld === 'hp' ? 'background:#14532d; border:1px solid #44ff88; color:#bbffcc;' : 'background:#1c1c1c; border:1px solid #444; color:#bbb;') + '">Recover Health</button>'
+            + '<button onclick="bpTurnSet(\'recoveryField\',\'fp\')" style="' + fb + (fld === 'fp' ? 'background:#0a2a4a; border:1px solid #44aaff; color:#bbddff;' : 'background:#1c1c1c; border:1px solid #444; color:#bbb;') + '">Recover Focus</button>'
+            + '</div><div style="margin-top:6px; color:#9ab;">Karma available: <strong>' + (actor.karma || 0) + '</strong>' + (sel.freeRecovery ? ' · <span style="color:#ffcc66;">Free — team maneuver (Rally 2), no Karma needed</span>' : '') + '</div></div>';
+    }
+    if(sel.kind === 'power' && sel.damageMode && actor.side === 'hero') {
+        html += '<label style="display:flex; gap:7px; align-items:center; font-size:0.8em; color:#cde; background:#141a14; border:1px solid #334433; border-radius:6px; padding:7px 10px; margin-bottom:8px; cursor:pointer;">'
+            + '<input type="checkbox" ' + (sel.holdBack ? 'checked ' : '') + 'onchange="bpTurnSet(\'holdBack\', this.checked)">'
+            + '<span><strong>Hold back</strong> — heroes often pull their punches (Core Ch. 4): a target who would die or shatter is left 1 point away instead.</span></label>';
+    }
     if(sel.damageMode || sel.checkMode) {
         const abChips = BP_ABILITIES.map(function(a) {
             const on = sel.ability === a;
@@ -19007,6 +19530,9 @@ function bpTurnRenderResolve() {
     }).join('');
     html += '<div style="font-size:0.78em; color:#999; font-weight:bold; letter-spacing:1px;">TARGET' + (sel.damageMode ? ' (tap all that apply)' : '') + '</div>'
         + '<div style="display:flex; flex-direction:column; gap:5px;">' + (tBtns || '<span style="font-size:0.8em; color:#777;">No one else in the fight.</span>') + '</div>';
+    if(sel.damageMode && sel.rollMode === 'program' && sel.rolled && actor.tmBuff && actor.tmBuff.kind === 'off' && actor.tmBuff.val === 2 && actor.tmBuff.round === combatRound) {
+        html += '<button onclick="bpTurnTeamReroll()" style="width:100%; padding:9px; margin-bottom:8px; font-size:0.85em; font-weight:bold; background:#14281a; border:1px solid #44aa66; border-radius:6px; color:#aaffcc; cursor:pointer;">↻ Team Maneuver (Offensive 2): reroll all dice — keep the better result</button>';
+    }
     const needTarget = sel.damageMode || sel.kind === 'declare';
     const canConfirm = !needTarget || sel.targets.length > 0;
     html += '<button ' + (canConfirm ? '' : 'disabled ') + 'onclick="bpTurnConfirm()" style="padding:11px; font-size:0.9em; font-weight:bold; background:' + (canConfirm ? '#1a4a00' : '#222') + '; border:1px solid ' + (canConfirm ? '#44aa22' : '#444') + '; border-radius:6px; color:' + (canConfirm ? '#aaffaa' : '#666') + '; cursor:pointer;">' + (sel.damageMode ? '&#10003; Apply' : '&#10003; Confirm') + '</button>';
@@ -19056,11 +19582,28 @@ function bpTurnConfirm() {
     const fixedCost = sel.kind === 'power' ? bpFixedFocusCost(sel.name) : 0;
     const spec = sel.kind === 'power' ? bpSpendSpec(sel.name) : null;
     let spent = fixedCost + (spec ? (sel.focusSpent || 0) : 0);
+    // Exhausted (Spider-Verse / Avengers): powers with a Focus cost cost
+    // +5 Focus per exhausting influence; the penalty ignores the usual
+    // Focus spending cap.
+    if(sel.kind === 'power' && spent > 0 && (actor.conditions || []).some(function(x){ return String(x).toLowerCase() === 'exhausted'; })) {
+        let stacks = 1;
+        const ca = actor.conditionAmounts || {};
+        Object.keys(ca).forEach(function(k){ if(k.toLowerCase() === 'exhausted') stacks = Math.max(1, parseInt(ca[k], 10) || 1); });
+        spent += 5 * stacks;
+    }
     if(sel._costPaid) spent = sel._spentPaid || 0;
     else {
         if(spent > 0) {
-            const paid = Math.min(spent, Math.max(0, actor.currentFp));
+            // Self-Sacrifice (Secret Wars p.164): a declared hero may spend
+            // Focus below 0, down to shattered; the overspend becomes a
+            // Health debt settled at the end of the battle.
+            const floor = actor.selfSacrifice ? -(actor.maxFp || 0) : 0;
+            const paid = Math.min(spent, Math.max(0, actor.currentFp - floor));
+            const beforeFp = actor.currentFp;
             actor.currentFp -= paid;
+            if(actor.selfSacrifice && actor.currentFp < 0)
+                actor.sacrificeDebt = (actor.sacrificeDebt || 0) + (Math.max(0, -actor.currentFp) - Math.max(0, -beforeFp));
+            if(actor.currentFp <= 0) bpEndConcentration(actor, 'demoralized at 0 Focus');
             spent = paid;
         }
         sel._costPaid = true;
@@ -19070,6 +19613,15 @@ function bpTurnConfirm() {
         if(!Array.isArray(actor.usedPowers)) actor.usedPowers = [];
         const idx = (actor.powers || []).indexOf(sel.name);
         if(idx !== -1 && actor.usedPowers.indexOf(idx) === -1) actor.usedPowers.push(idx);
+        // A reaction power used on someone else's turn counts against the
+        // character's reactions for the round (1, or 2 with Combat Reflexes).
+        const pdR = (typeof powersData !== 'undefined' && powersData[sel.name]) || null;
+        if(pdR && /reaction/i.test(pdR.action || '')) {
+            const order = combatPhase === 'bonus' ? bonusOrder : mainOrder;
+            const turn = combatPhase === 'bonus' ? bonusTurn : mainTurn;
+            const activeUid = order && order.length ? order[((turn % order.length) + order.length) % order.length] : null;
+            if(activeUid && activeUid !== actor.uid) actor.reactionsUsed = Math.min(bpReactionMax(actor), (actor.reactionsUsed || 0) + 1);
+        }
     }
     const targetNames = [];
     let resultRows = null;
@@ -19104,8 +19656,18 @@ function bpTurnConfirm() {
             if(res.outcome === 'miss') { t.lastEvent = _bpEsc(actor.baseName || '') + ' missed with ' + sel.name + ' (' + res.total + ' vs TN ' + res.tn + ').'; parts.push((t.label || t.baseName) + ': miss'); resultRows.push({ name: t.label || t.baseName, state: 'miss', total: res.total, tn: res.tn, fantasticFail: res.fantasticFail }); return; }
             if(r.negated) { t.lastEvent = (actor.baseName || '') + "'s " + sel.name + ' was negated by DR ' + r.dr + '.'; parts.push((t.label || t.baseName) + ': negated by DR'); resultRows.push({ name: t.label || t.baseName, state: 'negated', dr: r.dr, total: res.total, tn: res.tn }); return; }
             const before = sel.resource === 'fp' ? t.currentFp : t.currentHp;
-            if(sel.resource === 'fp') t.currentFp = Math.max(0, t.currentFp - r.damage);
-            else t.currentHp = Math.max(0, t.currentHp - r.damage);
+            // Pools can go negative: death at −max Health, shattered at
+            // −max Focus (Core Ch. 4).
+            if(sel.resource === 'fp') t.currentFp = Math.max(-(t.maxFp || 0), t.currentFp - r.damage);
+            else t.currentHp = Math.max(-(t.maxHp || 0), t.currentHp - r.damage);
+            // Heroes hold back (Core Ch. 4): leave the target 1 point away
+            // from dying or shattering instead of finishing them.
+            if(sel.holdBack && actor.side === 'hero') {
+                if(sel.resource === 'fp' && t.currentFp <= -(t.maxFp || 0)) t.currentFp = -((t.maxFp || 0) - 1);
+                if(sel.resource !== 'fp' && t.currentHp <= -(t.maxHp || 0)) t.currentHp = -((t.maxHp || 0) - 1);
+            }
+            if(t.currentHp <= 0) bpEndConcentration(t, 'downed');
+            if(t.currentFp <= 0) bpEndConcentration(t, 'demoralized at 0 Focus');
             const after = sel.resource === 'fp' ? t.currentFp : t.currentHp;
             const fx = bpPowerFx(sel.name);
             const fracNow = bpOutcomeSpec(sel.name)[res.outcome === 'fantastic' ? 'fantastic' : 'success'];
@@ -19114,6 +19676,26 @@ function bpTurnConfirm() {
             t.lastEvent = 'Took ' + r.damage + ' ' + (sel.resource === 'fp' ? 'Focus' : 'Health') + ' damage from ' + (actor.baseName || '') + ' (' + sel.name + ')' + (applied.length ? ' — now ' + applied.join(', ') : '') + '.';
             parts.push((t.label || t.baseName) + ' takes ' + r.damage);
             resultRows.push({ name: t.label || t.baseName, state: 'hit', damage: r.damage, before: before, after: after, resource: sel.resource, fantastic: res.fantastic, total: res.total, tn: res.tn, conditions: applied });
+            // Knockback (Core Ch. 4): a Fantastic close attack by a character
+            // with a Mighty power knocks the target back 5 spaces per point
+            // of the attack's effective damage multiplier (after DR).
+            if(res.fantastic && sel.ability === 'melee' && r.damage > 0 && (actor.powers || []).some(function(p){ return /^Mighty\s*\d*$/i.test(p); })) {
+                const kb = 5 * Math.max(0, bpCombatMult(actor, 'melee') - (r.dr || 0));
+                if(kb > 0) extraLines.push('💥 Knockback: ' + _bpEsc(t.label || t.baseName) + ' is knocked back ' + kb + ' spaces (Mighty + Fantastic).');
+            }
+            // Mental duel (X-Men): taking Health damage while committed to a
+            // duel forces a Vigilance check vs TN = the damage to stay in.
+            if(sel.resource !== 'fp' && r.damage > 0 && t.mentalDuel) {
+                extraLines.push('🧠 ' + _bpEsc(t.label || t.baseName) + ' is in a mental duel — they must make a Vigilance check vs TN ' + r.damage + ' to stay in it, or be forcibly disengaged (foes may make one last attack as a reaction).');
+            }
+            // Big Fights (Avengers): track when a grouped unit loses a member.
+            if(r.damage > 0 && t.groupCount && t.groupMemberHp) {
+                const left = Math.max(0, Math.ceil(t.currentHp / t.groupMemberHp));
+                if(left < (t.groupLeft || t.groupCount)) {
+                    t.groupLeft = left;
+                    extraLines.push('👥 ' + _bpEsc(t.label || t.baseName) + ': a member goes down — ' + left + ' of ' + t.groupCount + ' remain.');
+                }
+            }
         });
         actor.lastEvent = '&#9876; ' + sel.name + (targetNames.length ? ' &rarr; ' + targetNames.join(', ') : '') + (parts.length ? ': ' + parts.join('; ') : '') + (spent ? ' &middot; spent ' + spent + ' Focus' : '') + '.';
         if(drainTotal > 0) {
@@ -19121,7 +19703,31 @@ function bpTurnConfirm() {
             const pool = fxD.drain.r === 'fp' ? 'currentFp' : 'currentHp';
             const maxPool = fxD.drain.r === 'fp' ? 'maxFp' : 'maxHp';
             const healed = Math.min(actor[maxPool] - actor[pool], drainTotal);
-            if(healed > 0) { actor[pool] += healed; extraLines.push('&#128154; ' + _bpEsc(actor.label || actor.baseName) + ' drains back ' + healed + ' ' + (fxD.drain.r === 'fp' ? 'Focus' : 'Health') + ' (' + sel.name + ').'); }
+            if(healed > 0) { actor[pool] += healed; if(pool === 'currentHp') bpMaybeEndBleeding(actor); extraLines.push('&#128154; ' + _bpEsc(actor.label || actor.baseName) + ' drains back ' + healed + ' ' + (fxD.drain.r === 'fp' ? 'Focus' : 'Health') + ' (' + sel.name + ').'); }
+        }
+    } else if(sel.kind === 'recovery') {
+        resultRows = [];
+        let canRecover = !!sel.freeRecovery;
+        if(!canRecover) {
+            if((actor.karma || 0) < 1) {
+                actor.lastEvent = '💚 Recovery attempted, but it costs 1 Karma and ' + (actor.label || actor.baseName) + ' has none.';
+                if(typeof showNotice === 'function') showNotice('Recovery costs 1 Karma — ' + (actor.label || actor.baseName) + ' has none to spend.');
+            } else { actor.karma -= 1; canRecover = true; }
+        }
+        if(canRecover) {
+            const res = bpResolveOutcome(actor, actor, sel);
+            const marvel = bpEffDice(sel).m;
+            let amount = res.success ? marvel * (parseInt(actor.rank, 10) || 1) + bpAbilityScore(actor, sel.ability) : 0;
+            if(res.fantastic) amount *= 2;
+            const isFp = sel.recoveryField === 'fp';
+            const pool = isFp ? 'currentFp' : 'currentHp';
+            const maxPool = isFp ? 'maxFp' : 'maxHp';
+            const before = actor[pool];
+            if(res.success && amount > 0) actor[pool] = Math.min(actor[maxPool], actor[pool] + amount);
+            const gained = actor[pool] - before;
+            if(!isFp && gained > 0 && bpMaybeEndBleeding(actor)) extraLines.push('🩸 ' + _bpEsc(actor.label || actor.baseName) + "'s Bleeding ends (recovered Health).");
+            actor.lastEvent = '💚 Recovery (' + (isFp ? 'Focus' : 'Health') + '): ' + (res.success ? 'recovers ' + gained + (res.fantastic ? ' — Fantastic, doubled' : '') : 'check failed (' + res.total + ' vs TN ' + res.tn + ') — no recovery' + (sel.freeRecovery ? '' : ', Karma spent')) + '.';
+            resultRows.push({ name: actor.label || actor.baseName, state: 'heal', damage: gained, before: before, after: actor[pool], resource: isFp ? 'fp' : 'hp' });
         }
     } else if(sel.checkMode) {
         resultRows = [];
@@ -19151,6 +19757,7 @@ function bpTurnConfirm() {
             resultRows = healTargets.map(function(t) {
                 const before = t[pool];
                 t[pool] = Math.min(t[maxPool], t[pool] + amt);
+                if(pool === 'currentHp' && t[pool] > before) bpMaybeEndBleeding(t);
                 t.lastEvent = 'Restored ' + (t[pool] - before) + ' ' + resLabel2 + ' by ' + (actor.baseName || '') + ' (' + sel.name + ').';
                 return { name: t.label || t.baseName, state: 'heal', damage: t[pool] - before, before: before, after: t[pool], resource: fxU.healSpent.r };
             });
@@ -19206,8 +19813,8 @@ function bpSteppers(uid, pool) {
 function bpCombatAdjust(safeUid, pool, delta) {
     const c = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
     if(!c) return;
-    if(pool === 'hp') c.currentHp = Math.min(c.maxHp, Math.max(0, c.currentHp + delta));
-    else c.currentFp = Math.min(c.maxFp, Math.max(0, c.currentFp + delta));
+    if(pool === 'hp') c.currentHp = Math.min(c.maxHp, Math.max(-(c.maxHp || 0), c.currentHp + delta));
+    else c.currentFp = Math.min(c.maxFp, Math.max(-(c.maxFp || 0), c.currentFp + delta));
     if(typeof renderActiveCombat === 'function') renderActiveCombat();
 }
 
@@ -19255,9 +19862,46 @@ function bpAdjustPool(which, delta) {
     else combatKarma = Math.max(0, combatKarma + delta);
     renderCombatPools();
 }
+// Reactions (Core Ch. 4): one per round; Combat Reflexes allows two
+// (2025 errata). The universal maneuvers anyone can use as a reaction:
+const BP_REACTION_MANEUVERS = [
+    { name:'Interpose', text:'Trigger: someone within reach is targeted by an attack that does not also target you. Move (free) between the target and the attacker and become the new target; the attacker\'s TN is the lower of the two defenses.' },
+    { name:'Skulk', text:'Trigger: you are a target of an attack and someone within reach is not. Move (free) behind that person; they become the new target, with the same lower-of-two-defenses TN rule.' },
+    { name:'Escape', text:'Trigger: you are grabbed, pinned or paralyzed by something physical. Attempt to escape, just as with the regular Escape action.' },
+    { name:'Fastball Special', text:'A willing ally in reach throws you at a foe (or you throw them): resolve as a close attack with the thrown character.' },
+    { name:'Help Teammate', text:'Give a teammate within reach an edge on their next action. You can even target yourself, preparing for your own next action.' },
+    { name:'Ram', text:'Slam into a target within reach as it moves or acts: resolve as a close attack.' },
+    { name:'Release', text:'Let go of a character or object you are holding, as a reaction.' }
+];
+function bpReactionMax(c) { let m = (c && (c.powers || []).includes('Combat Reflexes')) ? 2 : 1; if(c && c.tmExtraReaction === combatRound) m += 1; return m; }
+function bpUseReaction(safeUid) {
+    const c = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
+    if(!c) return;
+    const used = c.reactionsUsed || 0, max = bpReactionMax(c);
+    const lines = ['<div style="font-size:0.85em; color:#ccc;">Reactions used this round: <strong>' + used + ' / ' + max + '</strong>' + (max > 1 ? ' (Combat Reflexes)' : '') + '</div>'];
+    BP_REACTION_MANEUVERS.forEach(function(m) {
+        lines.push('<button onclick="bpDoReaction(\'' + safeUid + '\',\'' + m.name + '\')" style="text-align:left; padding:9px 10px; background:#1a1428; border:1px solid #554488; border-radius:6px; color:#ddd; cursor:pointer;"><strong style="color:#bb99ff;">' + m.name + '</strong><br><span style="font-size:0.85em; color:#99a;">' + m.text + '</span></button>');
+    });
+    lines.push('<button onclick="bpDoReaction(\'' + safeUid + '\',\'Power / other reaction\')" style="text-align:left; padding:9px 10px; background:#222; border:1px solid #555; border-radius:6px; color:#ccc; cursor:pointer;"><strong>Power / other reaction</strong><br><span style="font-size:0.85em; color:#99a;">Just count a reaction use (resolve the effect with the normal tools).</span></button>');
+    if(typeof _showPickerModal === 'function') _showPickerModal('⚡ Reaction — ' + (c.label || c.baseName), lines);
+}
+function bpDoReaction(safeUid, name) {
+    const c = (typeof _findBySafeUid === 'function') ? _findBySafeUid(safeUid) : null;
+    if(!c) return;
+    const max = bpReactionMax(c);
+    if((c.reactionsUsed || 0) >= max) {
+        if(typeof showNotice === 'function') showNotice('⚡ ' + (c.label || c.baseName) + ' has already used ' + (max === 1 ? 'their reaction' : 'both reactions') + ' this round.');
+        _closePickerModal();
+        return;
+    }
+    c.reactionsUsed = (c.reactionsUsed || 0) + 1;
+    c.lastEvent = '⚡ Reaction: ' + name + ' (' + c.reactionsUsed + '/' + max + ' this round).';
+    _closePickerModal();
+    if(typeof renderActiveCombat === 'function') renderActiveCombat();
+}
 function bpNextRound() {
     combatRound++;
-    combatants.forEach(function(c){ c.usedPowers = []; });
+    combatants.forEach(function(c){ c.usedPowers = []; c.reactionsUsed = 0; });
     if(typeof renderActiveCombat === 'function') renderActiveCombat();
 }
 function renderCombatPools() {
@@ -19555,8 +20199,27 @@ function bpRenderGoonPanel() {
             }).join('');
         }
     }
+    const bf = window._bpBigFight || { group: false, sideInit: false };
+    const fl = window._bpFightLength || 30;
+    const tgl = 'width:auto;padding:4px 10px;font-size:0.76em;border-radius:4px;cursor:pointer;';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;border-top:1px solid #333;padding-top:8px;">'
+        + '<span style="font-size:0.8em;font-weight:bold;color:#ccc;">⚔ Fight options</span>'
+        + '<button onclick="bpBigFightToggle(\'group\')" style="' + tgl + (bf.group ? 'background:#1a4400;border:1px solid #44aa44;color:#dfffc8;' : 'background:#222;border:1px solid #555;color:#bbb;') + '" title="Avengers Big Fights: identical narrator types are staged as one unit with pooled Health and Focus">👥 Group narrator units: ' + (bf.group ? 'ON' : 'OFF') + '</button>'
+        + '<button onclick="bpBigFightToggle(\'sideInit\')" style="' + tgl + (bf.sideInit ? 'background:#1a4400;border:1px solid #44aa44;color:#dfffc8;' : 'background:#222;border:1px solid #555;color:#bbb;') + '" title="Avengers Big Fights: one initiative roll per side (best modifier), heroes win ties, no bonus round">🎲 Side initiative: ' + (bf.sideInit ? 'ON' : 'OFF') + '</button>'
+        + '<label style="font-size:0.78em;color:#aaa;">Fight length <select onchange="bpFightLengthSet(this.value)" style="padding:4px 6px;background:#1c1c1c;border:1px solid #555;border-radius:4px;color:#eee;">'
+        + '<option value="10"' + (fl === 10 ? ' selected' : '') + '>Quick ×10</option><option value="30"' + (fl === 30 ? ' selected' : '') + '>Standard ×30</option><option value="100"' + (fl === 100 ? ' selected' : '') + '>Epic ×100</option></select></label>'
+        + '<span style="font-size:0.72em;color:#888;">Big Fights: Avengers Expansion mass-battle options. Fight length: Spider-Verse Health/Focus multiplier variant — applies to fighters staged after you set it.</span></div>';
     h += '</div>';
     el.innerHTML = h;
+}
+function bpBigFightToggle(kind) {
+    window._bpBigFight = window._bpBigFight || { group: false, sideInit: false };
+    window._bpBigFight[kind] = !window._bpBigFight[kind];
+    bpRenderGoonPanel();
+}
+function bpFightLengthSet(v) {
+    window._bpFightLength = parseInt(v, 10) || 30;
+    bpRenderGoonPanel();
 }
 
 function bpRenderFightSetup() {
@@ -19765,7 +20428,7 @@ function bpCampaignHeroInfo(vaultId) {
     return {
         vaultId: vaultId,
         name: hero.heroName || hero.realName || hero.name || 'Hero',
-        rank: rank, res: res,
+        rank: rank, res: res, vig: vig,
         maxHp: calcHp(res, rank),
         maxFp: calcFp(vig, rank, traits),
         hasHF: (hero.powers || []).indexOf('Healing Factor') !== -1,
@@ -20238,9 +20901,10 @@ function bpCampaignBenchToggle(id, vaultId) {
 // The book's Recovery action, between fights (Core, Recovery): spend 1
 // Karma and make a Resilience (Health) or Vigilance (Focus) check vs
 // TN 10; on a success recover Marvel die x rank, doubled on a Fantastic.
-function bpCampaignRecoveryCalc(rank, total, marvelDie, fantastic) {
+function bpCampaignRecoveryCalc(rank, total, marvelDie, fantastic, ability) {
     const success = (parseInt(total, 10) || 0) >= 10;
-    let amount = success ? (parseInt(marvelDie, 10) || 0) * (parseInt(rank, 10) || 1) : 0;
+    // 2025 errata worked example: recover (Marvel die × rank) + ability score.
+    let amount = success ? (parseInt(marvelDie, 10) || 0) * (parseInt(rank, 10) || 1) + (parseInt(ability, 10) || 0) : 0;
     if(success && fantastic) amount *= 2;
     return { success: success, amount: amount };
 }
@@ -20254,7 +20918,7 @@ function bpCampaignRecovery(id, vaultId) {
     const rc = window._bpCampRec && window._bpCampRec.vaultId === vaultId
         ? window._bpCampRec : { vaultId: vaultId, field: 'hp', total: 9, marvel: 3, fantastic: false };
     window._bpCampRec = rc;
-    const out = bpCampaignRecoveryCalc(st.info.rank, rc.total, rc.marvel, rc.fantastic);
+    const out = bpCampaignRecoveryCalc(st.info.rank, rc.total, rc.marvel, rc.fantastic, rc.field === 'hp' ? st.info.res : st.info.vig);
     const target = rc.field === 'hp' ? st.hp : st.fp;
     const max = rc.field === 'hp' ? st.info.maxHp : st.info.maxFp;
     const gained = out.success ? Math.min(out.amount, Math.max(0, max - target)) : 0;
@@ -20285,7 +20949,7 @@ function bpCampaignRecoveryField(f) {
 function bpCampaignRecoveryAdj(field, delta) {
     const rc = window._bpCampRec || {};
     if(field === 'total') rc.total = Math.max(3, Math.min(18, (rc.total || 9) + delta));
-    if(field === 'marvel') rc.marvel = Math.max(1, Math.min(6, (rc.marvel || 3) + delta));
+    if(field === 'marvel') rc.marvel = Math.max(2, Math.min(6, (rc.marvel || 3) + delta));
     window._bpCampRec = rc;
     const camp = bpGetCampaigns().find(function(c){ return (c.party || []).some(function(p){ return p.vaultId === rc.vaultId; }); });
     if(camp) bpCampaignRecovery(camp.id, rc.vaultId);
@@ -20305,11 +20969,11 @@ function bpCampaignRecoveryApply(id, vaultId) {
     const st = bpCampaignPartyState(camp, p);
     const rc = window._bpCampRec || { field: 'hp', total: 9, marvel: 3, fantastic: false };
     if(!st || st.karma < 1) { if(typeof showNotice === 'function') showNotice('Recovery costs 1 Karma — this hero has none to spend.'); return; }
-    const out = bpCampaignRecoveryCalc(st.info.rank, rc.total, rc.marvel, rc.fantastic);
+    const out = bpCampaignRecoveryCalc(st.info.rank, rc.total, rc.marvel, rc.fantastic, rc.field === 'hp' ? st.info.res : st.info.vig);
     p.karma = st.karma - 1;
     let msg;
     if(out.success) {
-        if(rc.field === 'hp') { p.hp = Math.min(st.info.maxHp, st.hp + out.amount); msg = st.info.name + ' recovers ' + Math.min(out.amount, st.info.maxHp - st.hp) + ' Health.'; }
+        if(rc.field === 'hp') { p.hp = Math.min(st.info.maxHp, st.hp + out.amount); msg = st.info.name + ' recovers ' + Math.min(out.amount, st.info.maxHp - st.hp) + ' Health.'; if(Array.isArray(p.conds) && p.conds.indexOf('Bleeding') !== -1) { p.conds = p.conds.filter(function(x){ return x !== 'Bleeding'; }); msg += ' Recovering Health ends their Bleeding.'; } }
         else { p.fp = Math.min(st.info.maxFp, st.fp + out.amount); msg = st.info.name + ' recovers ' + Math.min(out.amount, st.info.maxFp - st.fp) + ' Focus.'; }
     } else {
         msg = st.info.name + '\'s Recovery check fails — no recovery, and the Karma is spent.';
@@ -21036,6 +21700,11 @@ function renderCombatant(c, accentColor) {
             </div>
         </div>
 
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+            <span style="font-size:0.72em; color:#aabbdd;">⚡ Reactions: <strong>${c.reactionsUsed || 0}/${bpReactionMax(c)}</strong> this round</span>
+            <button onclick="bpUseReaction('${safeUid}')" style="width:auto; padding:4px 10px; font-size:0.72em; background:#1a1428; border:1px solid #554488; border-radius:5px; color:#bb99ff; cursor:pointer;">Use reaction…</button>
+            ${!c.selfSacrifice && (c.currentFp <= 0 || (c.conditions || []).some(function(x){ return String(x).toLowerCase() === 'demoralized'; })) ? `<button onclick="bpSelfSacrifice('${safeUid}')" style="width:auto; padding:4px 10px; font-size:0.72em; background:#2a0d0d; border:1px solid #883333; border-radius:5px; color:#ff9999; cursor:pointer;" title="Self-Sacrifice (Secret Wars p.164): declare while out of Focus or demoralized — no longer demoralized until the battle ends, the Focus cap is lifted, and Focus can be spent below 0; each point spent costs 1 Health at the end of the battle">🩸 Self-Sacrifice</button>` : ''}
+        </div>
         ${bpSteppers(c.uid,'fp')}
         <!-- Controls -->
         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
@@ -21078,9 +21747,13 @@ const _CONDITIONS = [
     { name:'Poisoned', color:'#226633', icon:'☠', desc:'Toxins in the system. Once per turn, the character makes a Resilience check vs. TN 18; on a failure, they lose 1 Health. The Narrator tracks the roll — effects and cures vary by poison. (Spider-Verse Expansion p.138)' },
     { name:'Blinded', color:'#333333', icon:'👁', desc:'Cannot see; attacks and perception have serious trouble.' },
     { name:'Exhausted', color:'#664466', icon:'😴', desc:'+5 Focus cost for powers with a Focus cost, increasing by +5 per additional 24 hours awake or other exhausting influence; ignores normal spending cap; trouble on all actions; ends after a good night\'s sleep. (Avengers Expansion p.157)' },
-    { name:'Frightened', color:'#8855aa', icon:'😱', desc:'Ego vs. TN 13 (once/round when acting in danger) or paralyzed 1 round; success means fleeing at top speed from the fear for 1 round.' },
+    { name:'Frightened', color:'#8855aa', icon:'😱', desc:'On becoming Frightened, immediately make an Ego check vs. TN 13 (no action): fail and you are paralyzed for 1 round; succeed and you must spend your standard and movement actions fleeing the source at top speed for 1 round; on a Fantastic success you are no longer frightened. (Spider-Verse Expansion p.137)' },
     { name:'Corroding', color:'#66aa22', icon:'🧪', desc:'Loses 5 Health at the end of each of their turns (DR applies); lasts until washed off or the condition ends. (Spider-Verse Expansion p.137)', tick:{ resource:'hp', amount:5, timing:'endOfTurn', drApplies:true } },
     { name:'Infected', color:'#779922', icon:'🤒', desc:'Diseased — Resilience checks vs. the infection\'s TN; incubation, effects and cures vary by disease. See the Secret Wars Rules Reference panel for the Hunger virus, lycanthropy, and Spider-Virus. (Secret Wars Expansion pp.164–166)' },
+    { name:'Unconscious', color:'#1a1a2e', icon:'😵', desc:'Cannot take actions. All defenses are reduced to 10, and close attacks against them automatically hit. Any powers they are concentrating on end immediately. (Core Rulebook Ch. 4)' },
+    { name:'Surprised', color:'#aa6622', icon:'❗', desc:'Cannot act in the bonus round. The characters who surprised them have an edge on attacks against them for 1 round. (Core Rulebook Ch. 4)' },
+    { name:'Deafened', color:'#666677', icon:'🔇', desc:'Cannot hear. Trouble on checks that depend on hearing, such as hearing-based Vigilance checks. (Core Rulebook Ch. 4)' },
+    { name:'Shield Out', color:'#446688', icon:'🛡', desc:'Threw their shield (Shield Bearer): it returns at the start of their next turn — the app clears this automatically then. Until it returns, they get no benefit from the shield and cannot use other Shield Bearer powers. (Avengers Expansion)' },
 ];
 function renderConditionControls(uid, conditions) {
     const active = Array.isArray(conditions) ? conditions : [];
@@ -21144,7 +21817,19 @@ function bpOpenConditionPopup(uid, name) {
 function bpConfirmAddCondition(uid, name) {
     const c = combatants.find(x => x.uid === uid); if (!c) return;
     if (!c.conditions) c.conditions = [];
+    // Exhausted stacks: each additional exhausting influence adds +5 to the
+    // Focus-cost penalty (Spider-Verse / Avengers). Re-adding it stacks.
+    if (name === 'Exhausted' && c.conditions.includes('Exhausted')) {
+        if (!c.conditionAmounts) c.conditionAmounts = {};
+        c.conditionAmounts['Exhausted'] = (parseInt(c.conditionAmounts['Exhausted'], 10) || 1) + 1;
+        if (typeof bpFightNotice === 'function') bpFightNotice('😴 Exhausted stacks: ' + c.conditionAmounts['Exhausted'] + ' (Focus-cost penalty +' + (5 * c.conditionAmounts['Exhausted']) + ').');
+        renderActiveCombat();
+        return;
+    }
     if (!c.conditions.includes(name)) c.conditions.push(name);
+    if (name === 'Stunned') bpEndConcentration(c, 'stunned');
+    if (name === 'Demoralized') bpEndConcentration(c, 'demoralized');
+    if (name === 'Unconscious' || name === 'Asleep') bpEndConcentration(c, 'unconscious');
     const cd = _CONDITIONS.find(x => x.name === name);
     if (cd && cd.tick) {
         const inp = document.getElementById('condAmtInput');
@@ -21191,6 +21876,25 @@ function toggleCondition(uid, cond) {
 // point of Damage Reduction absorbs 5 points of damage. Health damage
 // uses Health DR (Sturdy, Flexible Bones, Reinforced Skeleton); Focus
 // damage uses Uncanny. (Ben, 2026-11-15: DR must always be accounted for.)
+// Core Ch. 4 (Bleeding): the condition ends as soon as the victim
+// recovers 1 or more Health by any means.
+function bpMaybeEndBleeding(c) {
+    if(c && (c.conditions || []).some(function(x){ return String(x).toLowerCase() === 'bleeding'; })) {
+        c.conditions = c.conditions.filter(function(x){ return String(x).toLowerCase() !== 'bleeding'; });
+        return true;
+    }
+    return false;
+}
+// Concentration ends when the character is stunned, demoralized (0 Focus),
+// asleep, unconscious or downed (Core Ch. 4 condition texts).
+function bpEndConcentration(c, why) {
+    if(c && c.concentrating) {
+        c.concentrating = '';
+        if(typeof bpFightNotice === 'function') bpFightNotice('◎ ' + (c.label || c.baseName || 'Character') + "'s concentration ended (" + why + ').');
+        return true;
+    }
+    return false;
+}
 function bpManualDamageAfterDR(c, amount, resource) {
     const dr = resource === 'fp' ? bpFocusDR(c) : _getHealthDamageReduction(c);
     const blocked = Math.min(amount, dr * 5);
@@ -21200,20 +21904,27 @@ function bpManualDamageAfterDR(c, amount, resource) {
 function applyDamage(uid) {
     const c = combatants.find(x => x.uid === uid); if(!c) return;
     const r = bpManualDamageAfterDR(c, getAmt(uid), 'hp');
-    c.currentHp = Math.max(0, c.currentHp - r.actual);
+    // Health can go negative; a character dies at −max Health (Core Ch. 4).
+    c.currentHp = Math.max(-(c.maxHp || 0), c.currentHp - r.actual);
     if(r.blocked > 0) c.lastEvent = '💥 Took ' + r.actual + ' damage — ' + r.blocked + ' absorbed by DR ' + r.dr + '.';
     else if(r.actual > 0) c.lastEvent = '💥 Took ' + r.actual + ' damage.';
+    if(r.actual > 0 && c.currentHp <= -(c.maxHp || 0)) c.lastEvent += ' 💀 Dead.';
+    if(c.currentHp <= 0) bpEndConcentration(c, 'downed');
     renderActiveCombat();
 }
 function applyHeal(uid) {
     const c = combatants.find(x => x.uid === uid); if(!c) return;
+    const before = c.currentHp;
     c.currentHp = Math.min(c.maxHp, c.currentHp + getAmt(uid));
+    if(c.currentHp > before && bpMaybeEndBleeding(c)) c.lastEvent = '🩸 Bleeding ends — recovered Health.';
     renderActiveCombat();
 }
 function applyFocus(uid, dir) {
     const c = combatants.find(x => x.uid === uid); if(!c) return;
     const amt = getAmt(uid);
-    c.currentFp = dir === -1 ? Math.max(0, c.currentFp - amt) : Math.min(c.maxFp, c.currentFp + amt);
+    // Focus can go negative; a character is shattered at −max Focus (Core Ch. 4).
+    c.currentFp = dir === -1 ? Math.max(-(c.maxFp || 0), c.currentFp - amt) : Math.min(c.maxFp, c.currentFp + amt);
+    if(c.currentFp <= 0) bpEndConcentration(c, 'demoralized at 0 Focus');
     renderActiveCombat();
 }
 function updateStatus(uid, val) {
@@ -22286,7 +22997,7 @@ async function exportCharacterPDF(layout='standard') {
             const dx = dmgX + col*(dmgCW+GAP);
             const dy = yDmg + row*(DMG_ROW_H+GAP);
             const base = parseInt((stats||{})[s.id]||0);
-            const mult = rank + getPowerBonus(s.boosters) + (pdfIconicDmg[s.id] || 0);
+            const mult = rank + Math.max(getPowerBonus(s.boosters), pdfIconicDmg[s.id] || 0); // multiplier bonuses never stack (Core)
             fill(T.panel); rect(dx,dy,dmgCW,DMG_ROW_H,2);
             fill(T.accent); rect(dx,dy,4,DMG_ROW_H,0);
             bold(6.5); txtCol(T.sub);  doc.text(s.label.toUpperCase(), dx+8, dy + DMG_ROW_H*0.38);
